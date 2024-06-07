@@ -1,6 +1,6 @@
-# dt README
+# Dynamo Tools Extension README
 
-This is the README for your extension "dt". After writing up a brief description, we recommend including the following sections.
+This is the README for your extension "Dynamo Tools". After writing up a brief description, we recommend including the following sections.
 
 ## Features
 
