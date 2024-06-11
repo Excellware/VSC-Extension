@@ -9,23 +9,24 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:dt.settings"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
-      "title": "Dynamo Tools",
       "properties": {
-        "Dynamo Tools.enable": {
+        "dynamoTools.settings": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable Dynamo Tools"
+          "default": false,
+          "description": "Automatically find updates and apply them"
         }
       }
     },
     "commands": [
       {
-        "command": "dt.open",
-        "title": "Open DT Settings"
+        "command": "dt.settings",
+        "title": "Dynamo Tools"
       }
     ]
   },
