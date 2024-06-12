@@ -2,6 +2,19 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
+async function fetchJSON(url: any) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Network response was not ok ' + response.statusText);
+        }
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        return { error: 'There has been a problem with your fetch operation' };
+    }
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -27,7 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
     //     }
     // });
 
-    const showDataTable = vscode.commands.registerCommand('dt.settings', () => {
+    const disposable = vscode.commands.registerCommand('dt.settings', () => {
         const panel = vscode.window.createWebviewPanel(
             'dataTable',  // Identifies the type of the webview used
             'Company libraries', // Title of the panel displayed to the user
@@ -35,10 +48,30 @@ export function activate(context: vscode.ExtensionContext) {
             { enableScripts: true } // Webview options.
         );
 
+        // Handle messages from the webview
+        panel.webview.onDidReceiveMessage(
+            async message => {
+                switch (message.command) {
+                    case 'fetchJSON':
+                        const data = await fetchJSON(message.url);
+                        
+                        // Send the data back to the WebView
+                        panel.webview.postMessage({
+                            command: 'responseJSON',
+                            data: data
+                        });
+
+                        break;
+                }
+            },
+            undefined,
+            context.subscriptions
+        );
+
         panel.webview.html = getHtmlForWebview();
     });
 
-    context.subscriptions.push(showDataTable);
+    context.subscriptions.push(disposable);
 }
 
 function getHtmlForWebview() {
@@ -124,15 +157,41 @@ function getHtmlForWebview() {
                     </div>
                 </div>
             </div>
-
             <script>
                 $(function () {
-                    $('#btn-company-load').click(function () {
-                        alert(9989);
+                    const vscode = acquireVsCodeApi();
+
+                    window.addEventListener('message', event => {
+                        const message = event.data; // The JSON data from the extension
+
+                        switch (message.command) {
+                            case 'responseJSON':
+                                if (message.data) {
+                                    console.log('Received data:', message.data);
+                                    // Handle the data, e.g., display it in the WebView
+
+                                    const row = '<tr><th scope="row">'+message.data.cc+'</th><td></td><td></td><td></td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
+
+                                    // Append the new row to the table
+                                    $('.table-company-library tbody').append(row);
+
+                                    $("#companyCodeAddModal").modal('hide');
+                                }
+                                break;
+                        }
+                    });
+
+                    $('#btn-company-load').click(async function () {
+                        var companyCode = $('#input-company-code').val().toUpperCase();
+                        var url = 'https://dl.excellware.com/plugins/'+companyCode+'.json';
+
+                        vscode.postMessage({
+                            command: 'fetchJSON',
+                            url: url
+                        });
                     })
                 });
             </script>
-
             <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js" integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p" crossorigin="anonymous"></script>
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
         </body>
