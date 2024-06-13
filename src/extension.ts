@@ -9,9 +9,15 @@ async function fetchJSON(url: any) {
             throw new Error('Network response was not ok ' + response.statusText);
         }
         const data = await response.json();
-        return data;
+        return {
+            success: true,
+            data: data,
+        }
     } catch (error) {
-        return { error: 'There has been a problem with your fetch operation' };
+        return { 
+            success: false,
+            msg: 'There has been a problem with your fetch operation' 
+        }
     }
 }
 
@@ -23,6 +29,9 @@ export function activate(context: vscode.ExtensionContext) {
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, your extension "dt" is now active!');
 
+    if (!context.globalState.get("CompanyLibraries")) {
+        context.globalState.update("CompanyLibraries", [])
+    }
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with registerCommand
     // The commandId parameter must match the command field in package.json
@@ -53,13 +62,43 @@ export function activate(context: vscode.ExtensionContext) {
             async message => {
                 switch (message.command) {
                     case 'fetchJSON':
-                        const data = await fetchJSON(message.url);
-                        
-                        // Send the data back to the WebView
-                        panel.webview.postMessage({
-                            command: 'responseJSON',
-                            data: data
-                        });
+                        // check the global state
+                        let companyList:any = context.globalState.get("CompanyLibraries")
+                        const index = companyList.findIndex((elem:any) => {
+                            return elem.cc == message.companyCode
+                        })
+
+                        if (index >= 0) { // already exist
+                            panel.webview.postMessage({
+                                command: 'addCompanyCode',
+                                msg: `${message.companyCode} is already exist.`,
+                                status: 'error'
+                            });
+
+                            return;
+                        } else {
+                            const data:any = await fetchJSON(message.url);
+                            if (!data.success) {
+                                panel.webview.postMessage({
+                                    command: 'addCompanyCode',
+                                    msg: `${message.companyCode} is not exist.`,
+                                    status: 'error'
+                                });
+    
+                                return;
+                            }
+
+                            companyList.push(data.data)
+                            context.globalState.update("CompanyLibraries", companyList)
+
+                            // Send the data back to the WebView
+                            panel.webview.postMessage({
+                                command: 'addCompanyCode',
+                                data: data.data,
+                                msg: `${message.companyCode} is added`,
+                                status: 'success'
+                            });
+                        }
 
                         break;
                 }
@@ -68,13 +107,31 @@ export function activate(context: vscode.ExtensionContext) {
             context.subscriptions
         );
 
-        panel.webview.html = getHtmlForWebview();
+        panel.webview.html = getHtmlForWebview(context.globalState.get("CompanyLibraries"));
     });
 
     context.subscriptions.push(disposable);
 }
 
-function getHtmlForWebview() {
+function getHtmlForWebview(CompanyLibraries:any) {
+    let tblContent = ""
+
+    for (let index = 0; index < CompanyLibraries.length; index++) {
+        const elem = CompanyLibraries[index];
+        
+        tblContent += `<tr>
+            <th scope="row">${elem.cc}</th>
+            <td>${elem.desc}</td>
+            <td>MM/DD/YYYY</td>
+            <td>MM/DD/YYYY</td>
+            <td>
+                <div class="btn-group" role="group">
+                    <button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button>
+                </div>
+            </td>
+        </tr>`
+    }
+
     return `
         <!DOCTYPE html>
         <html lang="en">
@@ -108,28 +165,7 @@ function getHtmlForWebview() {
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <th scope="row">CD</th>
-                                    <td>Excellware Dynamo Tools</td>
-                                    <td>2024/05/21 08:41:54</td>
-                                    <td>2024/05/21 08:41:54</td>
-                                    <td>
-                                        <div class="btn-group" role="group">
-                                            <button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th scope="row">LK</th>
-                                    <td>Len E Krause</td>
-                                    <td>2024/05/21 08:41:54</td>
-                                    <td>2024/05/21 08:41:54</td>
-                                    <td>
-                                        <div class="btn-group" role="group">
-                                            <button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button>
-                                        </div>
-                                    </td>
-                                </tr>
+                                ${tblContent}
                             </tbody>
                         </table>
                     </div>
@@ -165,12 +201,11 @@ function getHtmlForWebview() {
                         const message = event.data; // The JSON data from the extension
 
                         switch (message.command) {
-                            case 'responseJSON':
+                            case 'addCompanyCode':
                                 if (message.data) {
-                                    console.log('Received data:', message.data);
                                     // Handle the data, e.g., display it in the WebView
 
-                                    const row = '<tr><th scope="row">'+message.data.cc+'</th><td></td><td></td><td></td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
+                                    const row = '<tr><th scope="row">'+message.data.cc+'</th><td>'+message.data.desc+'</td><td>MM/DD/YYYY</td><td>MM/DD/YYYY</td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
 
                                     // Append the new row to the table
                                     $('.table-company-library tbody').append(row);
@@ -187,6 +222,7 @@ function getHtmlForWebview() {
 
                         vscode.postMessage({
                             command: 'fetchJSON',
+                            companyCode: companyCode,
                             url: url
                         });
                     })
