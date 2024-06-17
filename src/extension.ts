@@ -2,16 +2,37 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
-async function fetchJSON(url: any) {
+function formatDateTime(d: Date) {
+    let month = '' + (d.getUTCMonth() + 1); // getUTCMonth returns months from 0-11
+    let day = '' + d.getUTCDate();
+    let year = d.getUTCFullYear();
+    let hour = '' + d.getUTCHours();
+    let minute = '' + d.getUTCMinutes();
+
+    // Pad with zeros if necessary
+    month = month.padStart(2, '0');
+    day = day.padStart(2, '0');
+    hour = hour.padStart(2, '0');
+    minute = minute.padStart(2, '0');
+
+    return `${month}/${day}/${year} ${hour}:${minute}, GMT+0`;
+}
+
+async function loadCompany(url: any) {
     try {
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error('Network response was not ok ' + response.statusText);
         }
-        const data = await response.json();
+
+        const company = await response.json();
         return {
             success: true,
-            data: data,
+            data: {
+                company,
+                remoteTime: formatDateTime(new Date(response.headers.get("Last-Modified")!)),
+                localTime: formatDateTime(new Date()),
+            }
         }
     } catch (error) {
         return { 
@@ -27,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
-    console.log('Congratulations, your extension "dt" is now active!');
+    console.log('Congratulations, Dynamo Tools extension is now active!');
 
     if (!context.globalState.get("CompanyLibraries")) {
         context.globalState.update("CompanyLibraries", [])
@@ -61,33 +82,33 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.onDidReceiveMessage(
             async message => {
                 switch (message.command) {
-                    case 'fetchJSON':
+                    case 'load_company':
                         // check the global state
                         let companyList:any = context.globalState.get("CompanyLibraries")
                         const index = companyList.findIndex((elem:any) => {
-                            return elem.cc == message.companyCode
-                        })
+                            return elem.company.cc === message.companyCode;
+                        });
 
                         if (index >= 0) { // already exist
                             panel.webview.postMessage({
                                 command: 'addCompanyCode',
-                                msg: `${message.companyCode} is already exist.`,
+                                msg: `Company code ${message.companyCode} is already exist.`,
                                 status: 'error'
                             });
 
                             return;
                         } else {
-                            const data:any = await fetchJSON(message.url);
+                            const data:any = await loadCompany(message.url);
                             if (!data.success) {
                                 panel.webview.postMessage({
                                     command: 'addCompanyCode',
-                                    msg: `${message.companyCode} is not exist.`,
+                                    msg: `Company code ${message.companyCode} is not exist.`,
                                     status: 'error'
                                 });
     
                                 return;
                             }
-
+                            
                             companyList.push(data.data)
                             context.globalState.update("CompanyLibraries", companyList)
 
@@ -95,7 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
                             panel.webview.postMessage({
                                 command: 'addCompanyCode',
                                 data: data.data,
-                                msg: `${message.companyCode} is added`,
+                                msg: `Company code ${message.companyCode} is added`,
                                 status: 'success'
                             });
                         }
@@ -120,13 +141,13 @@ function getHtmlForWebview(CompanyLibraries:any) {
         const elem = CompanyLibraries[index];
         
         tblContent += `<tr>
-            <th scope="row">${elem.cc}</th>
-            <td>${elem.desc}</td>
-            <td>MM/DD/YYYY</td>
-            <td>MM/DD/YYYY</td>
+            <th scope="row">${elem.company.cc}</th>
+            <td>${elem.company.desc}</td>
+            <td>${elem.localTime}</td>
+            <td>${elem.remoteTime}</td>
             <td>
                 <div class="btn-group" role="group">
-                    <button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button>
+                    <button class="btn btn-danger btn-sm btn-company-remove"><i class="fas fa-trash-alt"></i></button>
                 </div>
             </td>
         </tr>`
@@ -142,11 +163,59 @@ function getHtmlForWebview(CompanyLibraries:any) {
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
             <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
             <title>Company libraries</title>
+            <style>
+                #toast {
+                    visibility: hidden;
+                    min-width: 250px;
+                    background-color: #333;
+                    color: #fff;
+                    text-align: center;
+                    border-radius: 2px;
+                    padding: 16px;
+                    position: fixed;
+                    z-index: 1000;
+                    top: 10px;
+                    right: 10px;
+                    font-size: 17px;
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                }
+
+                #toast.show {
+                    visibility: visible;
+                    -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
+                    animation: fadein 0.5s, fadeout 0.5s 2.5s;
+                }
+
+                #toast.success { background-color: #28a745; } /* Green */
+                #toast.warning { background-color: #ffc107; } /* Yellow */
+                #toast.error { background-color: #dc3545; } /* Red */
+
+                @-webkit-keyframes fadein {
+                    from {opacity: 0;}
+                    to {opacity: 1;}
+                }
+
+                @keyframes fadein {
+                    from {opacity: 0;}
+                    to {opacity: 1;}
+                }
+
+                @-webkit-keyframes fadeout {
+                    from {opacity: 1;}
+                    to {opacity: 0;}
+                }
+
+                @keyframes fadeout {
+                    from {opacity: 1;}
+                    to {opacity: 0;}
+                }
+            </style>
         </head>
         <body class="bg-dark">
+            <div id="toast">This is a toast message!</div>
             <div class="container">
                 <div class="row">
-                    <div class="d-flex flex-row-reverse">
+                    <div class="d-flex flex-row-reverse mt-5">
                         <div>
                             <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#companyCodeAddModal">
                                 Add <i class="fas fa-plus"></i>
@@ -194,6 +263,15 @@ function getHtmlForWebview(CompanyLibraries:any) {
                 </div>
             </div>
             <script>
+                function showToast(message, type) {
+                    const toastElement = document.getElementById('toast');
+                    toastElement.textContent = message;
+                    toastElement.className = 'show ' + type;
+                    setTimeout(function() { 
+                        toastElement.className = toastElement.className.replace("show", ""); 
+                    }, 3000);
+                }
+
                 $(function () {
                     const vscode = acquireVsCodeApi();
 
@@ -205,13 +283,15 @@ function getHtmlForWebview(CompanyLibraries:any) {
                                 if (message.data) {
                                     // Handle the data, e.g., display it in the WebView
 
-                                    const row = '<tr><th scope="row">'+message.data.cc+'</th><td>'+message.data.desc+'</td><td>MM/DD/YYYY</td><td>MM/DD/YYYY</td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
+                                    const row = '<tr><th scope="row">'+message.data.company.cc+'</th><td>'+message.data.company.desc+'</td><td>'+message.data.localTime+'</td><td>'+message.data.remoteTime+'</td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm btn-company-remove"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
 
                                     // Append the new row to the table
                                     $('.table-company-library tbody').append(row);
 
                                     $("#companyCodeAddModal").modal('hide');
                                 }
+
+                                showToast(message.msg, message.status);
                                 break;
                         }
                     });
@@ -221,7 +301,7 @@ function getHtmlForWebview(CompanyLibraries:any) {
                         var url = 'https://dl.excellware.com/plugins/'+companyCode+'.json';
 
                         vscode.postMessage({
-                            command: 'fetchJSON',
+                            command: 'load_company',
                             companyCode: companyCode,
                             url: url
                         });

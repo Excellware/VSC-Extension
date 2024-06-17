@@ -14,15 +14,6 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "configuration": {
-      "properties": {
-        "dynamoTools.settings": {
-          "type": "boolean",
-          "default": false,
-          "description": "Automatically find updates and apply them"
-        }
-      }
-    },
     "commands": [
       {
         "command": "dt.settings",
