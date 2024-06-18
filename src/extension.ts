@@ -33,12 +33,12 @@ async function loadCompany(url: any) {
                 remoteTime: formatDateTime(new Date(response.headers.get("Last-Modified")!)),
                 localTime: formatDateTime(new Date()),
             }
-        }
+        };
     } catch (error) {
         return { 
             success: false,
             msg: 'There has been a problem with your fetch operation' 
-        }
+        };
     }
 }
 
@@ -51,7 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('Congratulations, Dynamo Tools extension is now active!');
 
     if (!context.globalState.get("CompanyLibraries")) {
-        context.globalState.update("CompanyLibraries", [])
+        context.globalState.update("CompanyLibraries", []);
     }
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with registerCommand
@@ -81,17 +81,18 @@ export function activate(context: vscode.ExtensionContext) {
         // Handle messages from the webview
         panel.webview.onDidReceiveMessage(
             async message => {
+                // check the global state
+                let companyList:any = context.globalState.get("CompanyLibraries");
+                
                 switch (message.command) {
                     case 'load_company':
-                        // check the global state
-                        let companyList:any = context.globalState.get("CompanyLibraries")
-                        const index = companyList.findIndex((elem:any) => {
+                        let index = companyList.findIndex((elem:any) => {
                             return elem.company.cc === message.companyCode;
                         });
 
                         if (index >= 0) { // already exist
                             panel.webview.postMessage({
-                                command: 'addCompanyCode',
+                                command: 'add-company-code',
                                 msg: `Company code ${message.companyCode} is already exist.`,
                                 status: 'error'
                             });
@@ -101,7 +102,7 @@ export function activate(context: vscode.ExtensionContext) {
                             const data:any = await loadCompany(message.url);
                             if (!data.success) {
                                 panel.webview.postMessage({
-                                    command: 'addCompanyCode',
+                                    command: 'add-company-code',
                                     msg: `Company code ${message.companyCode} is not exist.`,
                                     status: 'error'
                                 });
@@ -109,18 +110,33 @@ export function activate(context: vscode.ExtensionContext) {
                                 return;
                             }
                             
-                            companyList.push(data.data)
-                            context.globalState.update("CompanyLibraries", companyList)
+                            companyList.push(data.data);
+                            context.globalState.update("CompanyLibraries", companyList);
 
                             // Send the data back to the WebView
                             panel.webview.postMessage({
-                                command: 'addCompanyCode',
+                                command: 'add-company-code',
                                 data: data.data,
                                 msg: `Company code ${message.companyCode} is added`,
                                 status: 'success'
                             });
                         }
 
+                        break;
+                    case 'remove_company':
+                        let removeIndex = companyList.findIndex((elem: any) => elem.company.cc === message.companyCode);
+
+                        if (removeIndex >= 0) {
+                            companyList.splice(removeIndex, 1); // Remove the company from the list
+                            context.globalState.update("CompanyLibraries", companyList);
+
+                            panel.webview.postMessage({
+                                command: 'remove-company-code',
+                                data: message.companyCode,
+                                msg: `Company code ${message.companyCode} is removed.`,
+                                status: 'success'
+                            });
+                        }
                         break;
                 }
             },
@@ -135,22 +151,22 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function getHtmlForWebview(CompanyLibraries:any) {
-    let tblContent = ""
+    let tblContent = "";
 
     for (let index = 0; index < CompanyLibraries.length; index++) {
         const elem = CompanyLibraries[index];
         
-        tblContent += `<tr>
+        tblContent += `<tr class="company-${elem.company.cc}">
             <th scope="row">${elem.company.cc}</th>
             <td>${elem.company.desc}</td>
             <td>${elem.localTime}</td>
             <td>${elem.remoteTime}</td>
             <td>
                 <div class="btn-group" role="group">
-                    <button class="btn btn-danger btn-sm btn-company-remove"><i class="fas fa-trash-alt"></i></button>
+                    <button class="btn btn-danger btn-sm btn-company-remove" data-company-code="${elem.company.cc}"><i class="fas fa-trash-alt"></i></button>
                 </div>
             </td>
-        </tr>`
+        </tr>`;
     }
 
     return `
@@ -279,11 +295,11 @@ function getHtmlForWebview(CompanyLibraries:any) {
                         const message = event.data; // The JSON data from the extension
 
                         switch (message.command) {
-                            case 'addCompanyCode':
+                            case 'add-company-code':
                                 if (message.data) {
                                     // Handle the data, e.g., display it in the WebView
 
-                                    const row = '<tr><th scope="row">'+message.data.company.cc+'</th><td>'+message.data.company.desc+'</td><td>'+message.data.localTime+'</td><td>'+message.data.remoteTime+'</td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm btn-company-remove"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
+                                    const row = '<tr class="company-'+message.data.company.cc+'"><th scope="row">'+message.data.company.cc+'</th><td>'+message.data.company.desc+'</td><td>'+message.data.localTime+'</td><td>'+message.data.remoteTime+'</td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm btn-company-remove" data-company-code="'+message.data.company.cc+'"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
 
                                     // Append the new row to the table
                                     $('.table-company-library tbody').append(row);
@@ -291,6 +307,10 @@ function getHtmlForWebview(CompanyLibraries:any) {
                                     $("#companyCodeAddModal").modal('hide');
                                 }
 
+                                showToast(message.msg, message.status);
+                                break;
+                            case 'remove-company-code':
+                                $("tr.company-"+message.data).remove();
                                 showToast(message.msg, message.status);
                                 break;
                         }
@@ -305,7 +325,16 @@ function getHtmlForWebview(CompanyLibraries:any) {
                             companyCode: companyCode,
                             url: url
                         });
-                    })
+                    });
+                    
+                    $('.table-company-library').on('click', '.btn-company-remove', function() {
+                        var companyCode = $(this).data('company-code');
+
+                        vscode.postMessage({
+                            command: 'remove_company',
+                            companyCode: companyCode
+                        });
+                    });
                 });
             </script>
             <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js" integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p" crossorigin="anonymous"></script>
