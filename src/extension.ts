@@ -188,29 +188,15 @@ function getHtmlForWebview(CompanyLibraries: any) {
                 #toast.warning { background-color: #ffc107; } /* Yellow */
                 #toast.error { background-color: #dc3545; } /* Red */
 
-                @-webkit-keyframes fadein {
-                    from {opacity: 0;}
-                    to {opacity: 1;}
-                }
+                @-webkit-keyframes fadein { from {opacity: 0;} to {opacity: 1;} }
+                @keyframes fadein { from {opacity: 0;} to {opacity: 1;} }
 
-                @keyframes fadein {
-                    from {opacity: 0;}
-                    to {opacity: 1;}
-                }
-
-                @-webkit-keyframes fadeout {
-                    from {opacity: 1;}
-                    to {opacity: 0;}
-                }
-
-                @keyframes fadeout {
-                    from {opacity: 1;}
-                    to {opacity: 0;}
-                }
+                @-webkit-keyframes fadeout { from {opacity: 1;} to {opacity: 0;} }
+                @keyframes fadeout { from {opacity: 1;} to {opacity: 0;} }
             </style>
         </head>
         <body class="bg-dark">
-            <div id="toast">This is a toast message!</div>
+            <div id="toast"></div>
             <div class="container">
                 <div class="row">
                     <div class="d-flex flex-row-reverse mt-5">
@@ -238,7 +224,6 @@ function getHtmlForWebview(CompanyLibraries: any) {
                     </div>
                 </div>
 
-                <!-- Modal -->
                 <div class="modal fade" id="companyCodeAddModal" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-dialog-centered">
                         <div class="modal-content">
@@ -265,9 +250,7 @@ function getHtmlForWebview(CompanyLibraries: any) {
                     const toastElement = document.getElementById('toast');
                     toastElement.textContent = message;
                     toastElement.className = 'show ' + type;
-                    setTimeout(function() { 
-                        toastElement.className = toastElement.className.replace("show", ""); 
-                    }, 3000);
+                    setTimeout(() => toastElement.className = toastElement.className.replace("show", ""), 3000);
                 }
 
                 $(function () {
@@ -279,17 +262,28 @@ function getHtmlForWebview(CompanyLibraries: any) {
                         switch (message.command) {
                             case 'add-company-code':
                                 if (message.data) {
-                                    // Handle the data, e.g., display it in the WebView
+                                    const row = \`
+                                        <tr class="company-\${message.data.company.cc}">
+                                            <th scope="row">\${message.data.company.cc}</th>
+                                            <td>\${message.data.company.desc}</td>
+                                            <td>\${message.data.localTime}</td>
+                                            <td>\${message.data.remoteTime}</td>
+                                            <td>
+                                                <div class="btn-group" role="group">
+                                                    <button class="btn btn-danger btn-sm btn-company-remove" data-company-code="\${message.data.company.cc}">
+                                                        <i class="fas fa-trash-alt"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>\`;
 
-                                    const row = '<tr class="company-'+message.data.company.cc+'"><th scope="row">'+message.data.company.cc+'</th><td>'+message.data.company.desc+'</td><td>'+message.data.localTime+'</td><td>'+message.data.remoteTime+'</td><td><div class="btn-group" role="group"><button class="btn btn-danger btn-sm btn-company-remove" data-company-code="'+message.data.company.cc+'"><i class="fas fa-trash-alt"></i></button></div></td></tr>';
-
-                                    // Append the new row to the table
                                     $('.table-company-library tbody').append(row);
-
                                     $("#companyCodeAddModal").modal('hide');
+                                    $('#input-company-code').val('');
+                                    showToast(message.msg, message.status);
+                                } else {
+                                    showToast(message.msg, message.status);
                                 }
-
-                                showToast(message.msg, message.status);
                                 break;
                             case 'remove-company-code':
                                 $("tr.company-"+message.data).remove();
@@ -300,12 +294,10 @@ function getHtmlForWebview(CompanyLibraries: any) {
 
                     $('#btn-company-load').click(async function () {
                         var companyCode = $('#input-company-code').val().toUpperCase();
-                        var url = 'https://dl.excellware.com/plugins/'+companyCode+'.json';
-
                         vscode.postMessage({
                             command: 'load_company',
-                            companyCode: companyCode,
-                            url: url
+                            companyCode,
+                            url: \`https://dl.excellware.com/plugins/\${companyCode}.json\`
                         });
                     });
                     
@@ -314,7 +306,7 @@ function getHtmlForWebview(CompanyLibraries: any) {
 
                         vscode.postMessage({
                             command: 'remove_company',
-                            companyCode: companyCode
+                            companyCode
                         });
                     });
                 });
