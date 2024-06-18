@@ -1,5 +1,3 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
 function formatDateTime(d: Date) {
@@ -35,9 +33,9 @@ async function loadCompany(url: any) {
             }
         };
     } catch (error) {
-        return { 
+        return {
             success: false,
-            msg: 'There has been a problem with your fetch operation' 
+            msg: 'There has been a problem with your fetch operation'
         };
     }
 }
@@ -82,54 +80,43 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.onDidReceiveMessage(
             async message => {
                 // check the global state
-                let companyList:any = context.globalState.get("CompanyLibraries");
-                
+                let companyList: any = context.globalState.get("CompanyLibraries");
+
                 switch (message.command) {
                     case 'load_company':
-                        let index = companyList.findIndex((elem:any) => {
-                            return elem.company.cc === message.companyCode;
-                        });
-
-                        if (index >= 0) { // already exist
+                        if (companyList.findIndex((elem: any) => elem.company.cc === message.companyCode) >= 0) {
                             panel.webview.postMessage({
                                 command: 'add-company-code',
                                 msg: `Company code ${message.companyCode} is already exist.`,
                                 status: 'error'
                             });
-
                             return;
-                        } else {
-                            const data:any = await loadCompany(message.url);
-                            if (!data.success) {
-                                panel.webview.postMessage({
-                                    command: 'add-company-code',
-                                    msg: `Company code ${message.companyCode} is not exist.`,
-                                    status: 'error'
-                                });
-    
-                                return;
-                            }
-                            
-                            companyList.push(data.data);
-                            context.globalState.update("CompanyLibraries", companyList);
-
-                            // Send the data back to the WebView
-                            panel.webview.postMessage({
-                                command: 'add-company-code',
-                                data: data.data,
-                                msg: `Company code ${message.companyCode} is added`,
-                                status: 'success'
-                            });
                         }
 
+                        const data: any = await loadCompany(message.url);
+                        if (!data.success) {
+                            panel.webview.postMessage({
+                                command: 'add-company-code',
+                                msg: `Company code ${message.companyCode} is not exist.`,
+                                status: 'error'
+                            });
+                            return;
+                        }
+
+                        companyList.push(data.data);
+                        context.globalState.update("CompanyLibraries", companyList);
+                        panel.webview.postMessage({
+                            command: 'add-company-code',
+                            data: data.data,
+                            msg: `Company code ${message.companyCode} is added`,
+                            status: 'success'
+                        });
                         break;
                     case 'remove_company':
-                        let removeIndex = companyList.findIndex((elem: any) => elem.company.cc === message.companyCode);
-
-                        if (removeIndex >= 0) {
-                            companyList.splice(removeIndex, 1); // Remove the company from the list
+                        let index = companyList.findIndex((elem: any) => elem.company.cc === message.companyCode);
+                        if (index >= 0) {
+                            companyList.splice(index, 1); // Remove the company from the list
                             context.globalState.update("CompanyLibraries", companyList);
-
                             panel.webview.postMessage({
                                 command: 'remove-company-code',
                                 data: message.companyCode,
@@ -150,12 +137,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(disposable);
 }
 
-function getHtmlForWebview(CompanyLibraries:any) {
+function getHtmlForWebview(CompanyLibraries: any) {
     let tblContent = "";
 
     for (let index = 0; index < CompanyLibraries.length; index++) {
         const elem = CompanyLibraries[index];
-        
+
         tblContent += `<tr class="company-${elem.company.cc}">
             <th scope="row">${elem.company.cc}</th>
             <td>${elem.company.desc}</td>
