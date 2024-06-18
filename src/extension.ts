@@ -138,12 +138,8 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function getHtmlForWebview(CompanyLibraries: any) {
-    let tblContent = "";
-
-    for (let index = 0; index < CompanyLibraries.length; index++) {
-        const elem = CompanyLibraries[index];
-
-        tblContent += `<tr class="company-${elem.company.cc}">
+    const tblContent = CompanyLibraries.map((elem: any) => `
+        <tr class="company-${elem.company.cc}">
             <th scope="row">${elem.company.cc}</th>
             <td>${elem.company.desc}</td>
             <td>${elem.localTime}</td>
@@ -153,8 +149,7 @@ function getHtmlForWebview(CompanyLibraries: any) {
                     <button class="btn btn-danger btn-sm btn-company-remove" data-company-code="${elem.company.cc}"><i class="fas fa-trash-alt"></i></button>
                 </div>
             </td>
-        </tr>`;
-    }
+        </tr>`).join('');
 
     return `
         <!DOCTYPE html>
