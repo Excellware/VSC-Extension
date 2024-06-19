@@ -13,7 +13,7 @@ function formatDateTime(d: Date) {
     hour = hour.padStart(2, '0');
     minute = minute.padStart(2, '0');
 
-    return `${month}/${day}/${year} ${hour}:${minute}, GMT+0`;
+    return `${month}/${day}/${year} ${hour}:${minute} GMT+0`;
 }
 
 async function loadCompany(url: any) {
@@ -83,10 +83,10 @@ export function activate(context: vscode.ExtensionContext) {
                 let companyList: any = context.globalState.get("CompanyLibraries");
 
                 switch (message.command) {
-                    case 'load_company':
+                    case 'add_company':
                         if (companyList.findIndex((elem: any) => elem.company.cc === message.companyCode) >= 0) {
                             panel.webview.postMessage({
-                                command: 'add-company-code',
+                                command: 'add_company',
                                 msg: `Company code ${message.companyCode} is already exist.`,
                                 status: 'error'
                             });
@@ -96,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
                         const data: any = await loadCompany(message.url);
                         if (!data.success) {
                             panel.webview.postMessage({
-                                command: 'add-company-code',
+                                command: 'add_company',
                                 msg: `Company code ${message.companyCode} is not exist.`,
                                 status: 'error'
                             });
@@ -106,7 +106,7 @@ export function activate(context: vscode.ExtensionContext) {
                         companyList.push(data.data);
                         context.globalState.update("CompanyLibraries", companyList);
                         panel.webview.postMessage({
-                            command: 'add-company-code',
+                            command: 'add_company',
                             data: data.data,
                             msg: `Company code ${message.companyCode} is added`,
                             status: 'success'
@@ -118,12 +118,22 @@ export function activate(context: vscode.ExtensionContext) {
                             companyList.splice(index, 1); // Remove the company from the list
                             context.globalState.update("CompanyLibraries", companyList);
                             panel.webview.postMessage({
-                                command: 'remove-company-code',
+                                command: 'remove_company',
                                 data: message.companyCode,
                                 msg: `Company code ${message.companyCode} is removed.`,
                                 status: 'success'
                             });
                         }
+                        break;
+                    case 'reorder_company':
+                        panel.webview.postMessage({
+                            command: 'reorder_company',
+                            data: {
+                                dir: message.dir
+                            },
+                            msg: ``,
+                            status: 'success'
+                        });
                         break;
                 }
             },
@@ -201,13 +211,15 @@ function getHtmlForWebview(CompanyLibraries: any) {
                 <div class="row">
                     <div class="d-flex flex-row-reverse mt-5">
                         <div>
+                            <button type="button" id="btn-up" class="btn btn-success btn-sm disabled"><i class="fas fa-arrow-up"></i></button>
+                            <button type="button" id="btn-down" class="btn btn-success btn-sm disabled"><i class="fas fa-arrow-down"></i></button>
                             <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#companyCodeAddModal">
                                 Add <i class="fas fa-plus"></i>
                             </button>
                         </div>
                     </div>
                     <div>
-                        <table class="table table-dark table-company-library">
+                        <table class="table table-hover table-dark table-company-library">
                             <thead>
                                 <tr>
                                     <th scope="col">Code</th>
@@ -239,7 +251,6 @@ function getHtmlForWebview(CompanyLibraries: any) {
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-primary" id="btn-company-load">OK</button>
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                             </div>
                         </div>
                     </div>
@@ -260,7 +271,7 @@ function getHtmlForWebview(CompanyLibraries: any) {
                         const message = event.data; // The JSON data from the extension
 
                         switch (message.command) {
-                            case 'add-company-code':
+                            case 'add_company':
                                 if (message.data) {
                                     const row = \`
                                         <tr class="company-\${message.data.company.cc}">
@@ -285,9 +296,20 @@ function getHtmlForWebview(CompanyLibraries: any) {
                                     showToast(message.msg, message.status);
                                 }
                                 break;
-                            case 'remove-company-code':
+                            case 'remove_company':
                                 $("tr.company-"+message.data).remove();
                                 showToast(message.msg, message.status);
+                                break;
+                            case 'reorder_company':
+                                if (message.data.dir == "up") {
+                                    var selectedRow = $('.table-company-library tr.table-active');
+                                    selectedRow.prev().before(selectedRow);
+                                    updateButtonStates();
+                                } else {
+                                    var selectedRow = $('.table-company-library tr.table-active');
+                                    selectedRow.next().after(selectedRow);
+                                    updateButtonStates();
+                                }
                                 break;
                         }
                     });
@@ -295,7 +317,7 @@ function getHtmlForWebview(CompanyLibraries: any) {
                     $('#btn-company-load').click(async function () {
                         var companyCode = $('#input-company-code').val().toUpperCase();
                         vscode.postMessage({
-                            command: 'load_company',
+                            command: 'add_company',
                             companyCode,
                             url: \`https://dl.excellware.com/plugins/\${companyCode}.json\`
                         });
@@ -309,6 +331,43 @@ function getHtmlForWebview(CompanyLibraries: any) {
                             companyCode
                         });
                     });
+
+                    $('.table-company-library').on('click', 'tr', function() {
+                        $('.table-company-library tr').removeClass('table-active');
+                        $(this).toggleClass('table-active');
+
+                        updateButtonStates();
+                    });
+
+                    $('#btn-up').click(function() {
+                        var companyCode = $('.table-company-library tr.table-active').data('company-code');
+                        vscode.postMessage({
+                            command: 'reorder_company',
+                            companyCode,
+                            dir: 'up'
+                        });
+                    });
+
+                    $('#btn-down').click(function() {
+                        var companyCode = $('.table-company-library tr.table-active').data('company-code');
+                        vscode.postMessage({
+                            command: 'reorder_company',
+                            companyCode,
+                            dir: 'down'
+                        });
+                    });
+
+                    function updateButtonStates() {
+                        var selectedRow = $('.table-company-library tr.table-active');
+                        if (selectedRow.length === 0) {
+                            $('#btn-up').addClass('disabled');
+                            $('#btn-down').addClass('disabled');
+                            return;
+                        }
+
+                        $('#btn-up').toggleClass('disabled', selectedRow.is(':first-child'));
+                        $('#btn-down').toggleClass('disabled', selectedRow.is(':last-child'));
+                    }
                 });
             </script>
             <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js" integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p" crossorigin="anonymous"></script>
