@@ -10,7 +10,7 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:dt.settings"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {
