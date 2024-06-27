@@ -51,6 +51,13 @@ function getFieldsByDdname(companyList: any, ddname: any) {
     return [];
 }
 
+function getClasses(companyList: any) {
+    for (const elem of companyList) {
+        return elem.company.classes.map((e: any) => e.classname);
+    }
+    return [];
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -197,6 +204,32 @@ export function activate(context: vscode.ExtensionContext) {
     //     }
     // });
 
+    const provider1 = vscode.languages.registerCompletionItemProvider(
+        'plaintext',
+        {
+            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                // Check if the user has typed "new "
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                if (!linePrefix.endsWith('new ')) {
+                    return undefined;
+                }
+
+                const classes = getClasses(companyList);
+
+                if (!classes) {
+                    return undefined;
+                }
+
+                // Return specific suggestions for "new "
+                return classes.map((classname: any) => {
+                    const item = new vscode.CompletionItem(classname, vscode.CompletionItemKind.Field);
+                    return item;
+                });
+            }
+        },
+        'n' // Triggered whenever 'n' is typed, followed by 'e', 'w', and a space
+    );
+
     const provider2 = vscode.languages.registerCompletionItemProvider(
         'plaintext',
         {
@@ -214,13 +247,20 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!fields) {
                     return undefined;
                 }
-                return fields.map((field: any) => new vscode.CompletionItem(field, vscode.CompletionItemKind.Field));
+                
+                return fields.map((field: any) => {
+                    const [name, type, description] = field.split(':');
+                    const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
+                    item.label = `${name}`; // Including additional information in the label
+                    item.detail = `${description} ${type}`; // Type displayed in the detail property
+                    return item;
+                });
             }
         },
         '.' // triggered whenever a '.' is being typed
     );
 
-    context.subscriptions.push(disposable, provider2);
+    context.subscriptions.push(disposable, provider1, provider2);
 }
 
 function getHtmlForWebview(CompanyLibraries: any) {
