@@ -51,6 +51,31 @@ function getFieldsByDdname(companyList: any, ddname: any) {
     return [];
 }
 
+function getProgramNames(companyList: any) {
+    let programs: any = [];
+    for (const elem of companyList) {
+        for (const cp of elem.company.cp) {
+            // const temp = cp.args;
+            programs.push({
+                pgm: cp.pgm,
+                title: cp.title
+            });
+        }
+    }
+    
+    return programs;
+}
+
+function getProgramArgs(companyList: any, pgm: any) {
+    for (const elem of companyList) {
+        for (const cp of elem.company.cp) {
+            if (cp.pgm == pgm) {
+                return cp.args;
+            }
+        }
+    }
+}
+
 function getClasses(companyList: any) {
     for (const elem of companyList) {
         return elem.company.classes.map((e: any) => e.classname);
@@ -240,7 +265,6 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!patterns.some(elem => linePrefix.endsWith(elem))) {
                     return undefined;
                 }
-                console.log(linePrefix)
 
                 return symbolicLineLabels.map(label => {
                     const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Text);
@@ -251,7 +275,58 @@ export function activate(context: vscode.ExtensionContext) {
         '='
     );
 
-    const provider = vscode.languages.registerCompletionItemProvider(
+    const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
+        'plaintext',
+        {
+            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                // Check if the user has typed "new "
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                if (!linePrefix.endsWith('call ')) {
+                    return undefined;
+                }
+                
+                const programs = getProgramNames(companyList);
+                if (!programs) {
+                    return undefined;
+                }
+                // Return specific suggestions for "new "
+                return programs.map((elem: any) => {
+                    const item = new vscode.CompletionItem(elem.pgm, vscode.CompletionItemKind.Field);
+                    item.detail = `${elem.title}`; // Type displayed in the detail property
+                    item.insertText = `"${elem.pgm}"`; // Insert text when the item is selected
+                    return item;
+                });
+            },
+        },
+        ' '
+    );
+
+    const checkProgramArgProvider = vscode.languages.registerCompletionItemProvider(
+        'plaintext',
+        {
+            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                // Check if the user has typed "new "
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                const lastWordMatch = linePrefix.match(/call "(\w+)"\s$/);
+                if (!lastWordMatch) {
+                    return undefined;
+                }
+                
+                const args = getProgramArgs(companyList, lastWordMatch[1]);
+
+                let items: any = [];
+                for (let i = 0; i < args.length; i++) {
+                    const item = new vscode.CompletionItem(args[i], vscode.CompletionItemKind.Field);
+                    items.push(item);
+                }
+
+                return items;
+            },
+        },
+        ' '
+    );
+
+    const dataProvider = vscode.languages.registerCompletionItemProvider(
         'plaintext',
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
@@ -307,7 +382,7 @@ export function activate(context: vscode.ExtensionContext) {
         ' '
     );
 
-    const constructorProvider2 = vscode.languages.registerCompletionItemProvider(
+    const constructorProvider = vscode.languages.registerCompletionItemProvider(
         'plaintext',
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
@@ -329,7 +404,7 @@ export function activate(context: vscode.ExtensionContext) {
         ' '
     );
 
-    context.subscriptions.push(disposable, labelProvider, provider, classProvider, constructorProvider2);
+    context.subscriptions.push(disposable, labelProvider, checkProgramNameProvider, checkProgramArgProvider, dataProvider, classProvider, constructorProvider);
 }
 
 function getHtmlForWebview(CompanyLibraries: any) {
