@@ -58,6 +58,17 @@ function getClasses(companyList: any) {
     return [];
 }
 
+function getConstructors(companyList: any, classname: any) {
+    for (const elem of companyList) {
+        for (const e of elem.company.classes) {
+            if (e.classname == classname) {
+                return e.constructors;
+            }
+        }
+    }
+    return [];
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -204,7 +215,73 @@ export function activate(context: vscode.ExtensionContext) {
     //     }
     // });
 
-    const provider1 = vscode.languages.registerCompletionItemProvider(
+    const labelProvider = vscode.languages.registerCompletionItemProvider(
+        'plaintext',
+        {
+            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                const symbolicLineLabels = [
+                    "*next",
+                    "*break",
+                    "*continue",
+                    "*endif",
+                    "*retry",
+                    "*same",
+                    "*proceed",
+                    "*return",
+                    "*exit",
+                    "*stop",
+                    "*end",
+                    "*escape"
+                ];
+
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                const patterns = ['end=', 'dom=', 'err=', 'iol=', 'goto=', 'gosub=', 'seterr=', 'setesc='];
+
+                if (!patterns.some(elem => linePrefix.endsWith(elem))) {
+                    return undefined;
+                }
+                console.log(linePrefix)
+
+                return symbolicLineLabels.map(label => {
+                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Text);
+                    return item;
+                });
+            }
+        },
+        '='
+    );
+
+    const provider = vscode.languages.registerCompletionItemProvider(
+        'plaintext',
+        {
+            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                const lastWordMatch = linePrefix.match(/(\w+)\.$/);
+
+                if (!lastWordMatch) {
+                    return undefined;
+                }
+
+                const ddname = lastWordMatch[1].toUpperCase();
+                const fields = getFieldsByDdname(companyList, ddname);
+
+                if (!fields) {
+                    return undefined;
+                }
+                
+                return fields.map((field: any) => {
+                    const [name, type, description] = field.split(':');
+                    const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
+                    item.label = `${name}`; // Including additional information in the label
+                    item.detail = `${description} ${type}`; // Type displayed in the detail property
+                    return item;
+                });
+            }
+        },
+        '.'
+    );
+
+    const classProvider = vscode.languages.registerCompletionItemProvider(
         'plaintext',
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
@@ -227,40 +304,32 @@ export function activate(context: vscode.ExtensionContext) {
                 });
             }
         },
-        'n' // Triggered whenever 'n' is typed, followed by 'e', 'w', and a space
+        ' '
     );
 
-    const provider2 = vscode.languages.registerCompletionItemProvider(
+    const constructorProvider2 = vscode.languages.registerCompletionItemProvider(
         'plaintext',
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                // Check if the user has typed "new "
                 const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                const lastWordMatch = linePrefix.match(/(\w+)\.$/);
-
+                const lastWordMatch = linePrefix.match(/new (\w+)\s$/);
                 if (!lastWordMatch) {
                     return undefined;
                 }
-
-                const ddname = lastWordMatch[1];
-                const fields = getFieldsByDdname(companyList, ddname);
-
-                if (!fields) {
-                    return undefined;
-                }
                 
-                return fields.map((field: any) => {
-                    const [name, type, description] = field.split(':');
-                    const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
-                    item.label = `${name}`; // Including additional information in the label
-                    item.detail = `${description} ${type}`; // Type displayed in the detail property
+                const constructors = getConstructors(companyList, lastWordMatch[1]);
+
+                return  constructors.map((elem: any) => {
+                    const item = new vscode.CompletionItem(elem, vscode.CompletionItemKind.Field);
                     return item;
                 });
             }
         },
-        '.' // triggered whenever a '.' is being typed
+        ' '
     );
 
-    context.subscriptions.push(disposable, provider1, provider2);
+    context.subscriptions.push(disposable, labelProvider, provider, classProvider, constructorProvider2);
 }
 
 function getHtmlForWebview(CompanyLibraries: any) {
