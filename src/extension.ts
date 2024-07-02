@@ -241,7 +241,7 @@ export function activate(context: vscode.ExtensionContext) {
     // });
 
     const labelProvider = vscode.languages.registerCompletionItemProvider(
-        'plaintext',
+        ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
                 const symbolicLineLabels = [
@@ -276,7 +276,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
-        'plaintext',
+        ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
                 // Check if the user has typed "new "
@@ -302,7 +302,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const checkProgramArgProvider = vscode.languages.registerCompletionItemProvider(
-        'plaintext',
+        ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
                 // Check if the user has typed "new "
@@ -327,7 +327,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const dataProvider = vscode.languages.registerCompletionItemProvider(
-        'plaintext',
+        ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
                 const linePrefix = document.lineAt(position).text.substring(0, position.character);
@@ -357,7 +357,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const classProvider = vscode.languages.registerCompletionItemProvider(
-        'plaintext',
+        ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
                 // Check if the user has typed "new "
@@ -383,7 +383,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const constructorProvider = vscode.languages.registerCompletionItemProvider(
-        'plaintext',
+        ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
                 // Check if the user has typed "new "
