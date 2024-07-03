@@ -271,8 +271,7 @@ export function activate(context: vscode.ExtensionContext) {
                     return item;
                 });
             }
-        },
-        '='
+        }
     );
 
     const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
@@ -297,8 +296,7 @@ export function activate(context: vscode.ExtensionContext) {
                     return item;
                 });
             },
-        },
-        ' '
+        }
     );
 
     const checkProgramArgProvider = vscode.languages.registerCompletionItemProvider(
@@ -323,7 +321,6 @@ export function activate(context: vscode.ExtensionContext) {
                 return items;
             },
         },
-        ' '
     );
 
     const dataProvider = vscode.languages.registerCompletionItemProvider(
@@ -337,8 +334,8 @@ export function activate(context: vscode.ExtensionContext) {
                     return undefined;
                 }
 
-                const ddname = lastWordMatch[1].toUpperCase();
-                const fields = getFieldsByDdname(companyList, ddname);
+                const ddname = lastWordMatch[1];
+                const fields = getFieldsByDdname(companyList, lastWordMatch[1].toUpperCase());
 
                 if (!fields) {
                     return undefined;
@@ -347,7 +344,11 @@ export function activate(context: vscode.ExtensionContext) {
                 return fields.map((field: any) => {
                     const [name, type, description] = field.split(':');
                     const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
-                    item.label = `${name}`; // Including additional information in the label
+                    if (ddname === ddname.toUpperCase()) {
+                        item.label = `${name.toUpperCase()}`; // Including additional information in the label
+                    } else {
+                        item.label = `${name.toLowerCase()}`; // Including additional information in the label
+                    }
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
                     return item;
                 });
@@ -378,8 +379,7 @@ export function activate(context: vscode.ExtensionContext) {
                     return item;
                 });
             }
-        },
-        ' '
+        }
     );
 
     const constructorProvider = vscode.languages.registerCompletionItemProvider(
@@ -400,8 +400,7 @@ export function activate(context: vscode.ExtensionContext) {
                     return item;
                 });
             }
-        },
-        ' '
+        }
     );
 
     context.subscriptions.push(disposable, labelProvider, checkProgramNameProvider, checkProgramArgProvider, dataProvider, classProvider, constructorProvider);
