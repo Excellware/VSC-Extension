@@ -296,7 +296,8 @@ export function activate(context: vscode.ExtensionContext) {
                     return item;
                 });
             },
-        }
+        },
+        ' '
     );
 
     const checkProgramArgProvider = vscode.languages.registerCompletionItemProvider(
@@ -305,7 +306,7 @@ export function activate(context: vscode.ExtensionContext) {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
                 // Check if the user has typed "new "
                 const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                const lastWordMatch = linePrefix.match(/call "(\w+)"\s$/);
+                const lastWordMatch = linePrefix.match(/call "(\w+)"$/);
                 if (!lastWordMatch) {
                     return undefined;
                 }
@@ -379,7 +380,8 @@ export function activate(context: vscode.ExtensionContext) {
                     return item;
                 });
             }
-        }
+        },
+        ' '
     );
 
     const constructorProvider = vscode.languages.registerCompletionItemProvider(
@@ -397,10 +399,20 @@ export function activate(context: vscode.ExtensionContext) {
 
                 return  constructors.map((elem: any) => {
                     const item = new vscode.CompletionItem(elem, vscode.CompletionItemKind.Field);
+                    // Replace the trailing space with the selected item
+                    const range = new vscode.Range(
+                        new vscode.Position(position.line, linePrefix.length-1),
+                        new vscode.Position(position.line, linePrefix.length-1)
+                    );
+                    item.range = range;
                     return item;
+
+                    // const item = new vscode.CompletionItem(elem, vscode.CompletionItemKind.Field);
+                    // return item;
                 });
             }
-        }
+        },
+        ' '
     );
 
     context.subscriptions.push(disposable, labelProvider, checkProgramNameProvider, checkProgramArgProvider, dataProvider, classProvider, constructorProvider);
