@@ -376,7 +376,15 @@ export function activate(context: vscode.ExtensionContext) {
         ' '
     );
 
-    context.subscriptions.push(disposable, labelProvider, checkProgramNameProvider, checkProgramArgProvider, dataProvider, classProvider, constructorProvider);
+    context.subscriptions.push(
+        disposable, 
+        labelProvider, 
+        checkProgramNameProvider, 
+        checkProgramArgProvider, 
+        dataProvider, 
+        classProvider, 
+        constructorProvider
+    );
 }
 
 function getHtmlForWebview(CompanyLibraries: any) {
