@@ -38,10 +38,13 @@ function getProgramArgs(companyList: any, pgm: any) {
 }
 
 function getClasses(companyList: any) {
+    let classes: any = [];
     for (const elem of companyList) {
-        return elem.company.classes.map((e: any) => e.classname);
+        classes = classes.concat(elem.company.classes);
+        // return elem.company.classes.map((e: any) => e.classname);
     }
-    return [];
+    
+    return classes;
 }
 
 function getConstructors(companyList: any, classname: any) {
@@ -336,8 +339,8 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 // Return specific suggestions for "new "
-                return classes.map((classname: any) => {
-                    const item = new vscode.CompletionItem(classname, vscode.CompletionItemKind.Field);
+                return classes.map((elem: any) => {
+                    const item = new vscode.CompletionItem(elem.classname, vscode.CompletionItemKind.Field);
                     return item;
                 });
             }
