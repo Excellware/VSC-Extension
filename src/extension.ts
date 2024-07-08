@@ -322,6 +322,58 @@ export function activate(context: vscode.ExtensionContext) {
         '.'
     );
 
+    const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvider(
+        ['plaintext', 'bbj'],
+        {
+            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                const lastWordMatch = linePrefix.match(/(\w+)!\.$/);
+
+                if (!lastWordMatch) {
+                    return undefined;
+                }
+                const ddname = lastWordMatch[1];
+                const fields = getFieldsByDdname(companyList, lastWordMatch[1].toUpperCase());
+
+                if (!fields) {
+                    return undefined;
+                }
+
+                let items = [];
+                for (let i = 0, sortIndex = 0; i < fields.length; i++) {
+                    const field = fields[i];
+                    const [name, type, description] = field.split(':');
+                    
+                    let item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
+                    item.sortText = `${sortIndex}`;
+                    sortIndex++;
+                    if (ddname === ddname.toUpperCase()) {
+                        item.label = `getFieldAsString("${name.toUpperCase()}")`; // Including additional information in the label
+                    } else {
+                        item.label = `getFieldAsString("${name.toLowerCase()}")`; // Including additional information in the label
+                    }
+                    item.detail = `${description} ${type}`; // Type displayed in the detail property
+                    items.push(item);
+
+                    item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
+                    item.sortText = `${sortIndex}`;
+                    sortIndex++;
+                    if (ddname === ddname.toUpperCase()) {
+                        item.label = `setFieldValue("${name.toUpperCase()}", value)`; // Including additional information in the label
+                    } else {
+                        item.label = `setFieldValue("${name.toLowerCase()}", value)`; // Including additional information in the label
+                    }
+                    item.detail = `${description} ${type}`; // Type displayed in the detail property
+
+                    items.push(item);
+                }
+
+                return items;
+            }
+        },
+        '.'
+    );
+
     const classProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
         {
@@ -384,7 +436,8 @@ export function activate(context: vscode.ExtensionContext) {
         labelProvider, 
         checkProgramNameProvider, 
         checkProgramArgProvider, 
-        dataProvider, 
+        dataProvider,
+        bbjTemplatedStringProvider,
         classProvider, 
         constructorProvider
     );
