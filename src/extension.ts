@@ -343,26 +343,25 @@ export function activate(context: vscode.ExtensionContext) {
                 for (let i = 0, sortIndex = 0; i < fields.length; i++) {
                     const field = fields[i];
                     const [name, type, description] = field.split(':');
+                    const regex = /^([A-Za-z])(?:\((\d+)\))?$/;
+
+                    const param1 = name.charAt(name.length-1) === '$' ? name.substring(0, name.length-1) : name;
+                    const param2 = type.match(regex);
+                    const methodName = (param2[1].toUpperCase() === 'C' || param2[1].toUpperCase() === 'O') ? 'getFieldAsString' : 'getFieldAsNumber';
                     
                     let item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
                     item.sortText = `${sortIndex}`;
                     sortIndex++;
-                    if (ddname === ddname.toUpperCase()) {
-                        item.label = `getFieldAsString("${name.toUpperCase()}")`; // Including additional information in the label
-                    } else {
-                        item.label = `getFieldAsString("${name.toLowerCase()}")`; // Including additional information in the label
-                    }
+                    item.label = `${methodName}("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}", ${param2[2] ? param2[2] : 0})`;
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
                     items.push(item);
 
                     item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
                     item.sortText = `${sortIndex}`;
                     sortIndex++;
-                    if (ddname === ddname.toUpperCase()) {
-                        item.label = `setFieldValue("${name.toUpperCase()}", value)`; // Including additional information in the label
-                    } else {
-                        item.label = `setFieldValue("${name.toLowerCase()}", value)`; // Including additional information in the label
-                    }
+
+                    item.label = `setFieldValue("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}", value)`;
+
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
 
                     items.push(item);
