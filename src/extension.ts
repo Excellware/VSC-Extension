@@ -310,9 +310,9 @@ export function activate(context: vscode.ExtensionContext) {
                     const [name, type, description] = field.split(':');
                     const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
                     if (ddname === ddname.toUpperCase()) {
-                        item.label = `${name.toUpperCase()}`; // Including additional information in the label
+                        item.label = `${name.toUpperCase()}${type[0].toUpperCase() === 'U' ? '%' : ''}`; // Including additional information in the label
                     } else {
-                        item.label = `${name.toLowerCase()}`; // Including additional information in the label
+                        item.label = `${name.toLowerCase()}${type[0].toUpperCase() === 'U' ? '%' : ''}`; // Including additional information in the label
                     }
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
                     return item;
@@ -343,7 +343,6 @@ export function activate(context: vscode.ExtensionContext) {
                 for (let i = 0, sortIndex = 0; i < fields.length; i++) {
                     const field = fields[i];
                     const [name, type, description] = field.split(':');
-                    const regex = /^([A-Za-z])(?:\((\d+)\))?$/;
                     
                     const params = name.match(/(\w+)\$?(\[(\d+)\])?/);
                     const param1 = params[1];
