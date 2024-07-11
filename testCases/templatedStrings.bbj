@@ -1,7 +1,12 @@
-rem templatedStrings.bbj
-rem Examples from company code CD Dynamo Tools
+rem  templatedStrings.bbj
+rem  Examples from company code CD Dynamo Tools
 
 rem  Templated Strings
+
+rem  Template Field Types:
+rem    C + O -> strings
+rem    U + I -> integers
+rem    everything else -> numbers
 
 rem  String - non-repeating
 x$ = dd00.address$
@@ -20,6 +25,7 @@ x = sw101.viewcol[2]
 
 rem  Integer - repeating
 x% = dd00.dates%[9]
+
 
 rem  BBjTemplatedString objects
 
