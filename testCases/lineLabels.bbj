@@ -1,0 +1,31 @@
+rem  lineLabels.bbj
+
+rem  Dynamo Tools VS Code Extension will display list of line labels in program or method
+rem    after verb that has a line label argument such as "gosub" and "goto"
+rem  It will also provide symbolic line labels after expressions that take a line label such as err=, dom=, end=
+
+
+gosub 
+
+on x gosub 
+
+goto 
+
+read (chan, knum=0, key=k$, dom=  )
+
+readrecord (chan, end=  )
+
+value = num(value$, err=  )
+
+
+customer:
+return
+
+item:
+return
+
+salesOrder:
+return
+
+purchaseOrder:
+return
