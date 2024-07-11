@@ -309,14 +309,23 @@ export function activate(context: vscode.ExtensionContext) {
                 return fields.map((field: any) => {
                     const [name, type, description] = field.split(':');
                     const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
-                    
+
                     const params = name.match(/(\w+)\$?(\[(\d+)\])?/);
 
-                    if (ddname === ddname.toUpperCase()) {
-                        item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toUpperCase();
+                    if (type[0].toUpperCase() === 'U') {
+                        if (ddname === ddname.toUpperCase()) {
+                            item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toUpperCase();
+                        } else {
+                            item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toLowerCase();
+                        }
                     } else {
-                        item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toLowerCase();
+                        if (ddname === ddname.toUpperCase()) {
+                            item.label = `${name.toUpperCase()}`;
+                        } else {
+                            item.label = `${name.toLowerCase()}`;
+                        }
                     }
+                    
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
                     return item;
                 });
@@ -363,7 +372,7 @@ export function activate(context: vscode.ExtensionContext) {
                     item.sortText = `${sortIndex}`;
                     sortIndex++;
 
-                    item.label = `setFieldValue("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', '+param2 : ''}, ${(type[0].toUpperCase() === 'C' || type[0].toUpperCase() === 'O') ? 'value$' : 'value'})`;
+                    item.label = `setFieldValue("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', '+param2 : ''}, ${(type[0].toUpperCase() === 'C' || type[0].toUpperCase() === 'O') ? 'value$' : (type[0].toUpperCase() === 'N') ? 'value%' : 'value'})`;
 
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
 
