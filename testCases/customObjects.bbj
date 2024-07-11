@@ -3,6 +3,11 @@ rem  customObjects.bbj
 rem  Dynamo Tools VS Code Extension will provide list of custom objects and signatures
 rem  The class name proposals will be displayed after touching the space bar after the keyword 'new'
 rem  The signature proposals will be displayed after touching the space bar after the class name
+rem    The argument types are shown as a convenience, but of course must be removed for validation
 
+
+rem  DTE example including argument types
 view! = new DTView(BBjString cc!, BBjString DDName!, BBjString viewID!, BBjString filename$)
 
+rem  after removing argument types, statement should validate
+view! = new DTView(cc!, DDName!, viewID!, filename$)
