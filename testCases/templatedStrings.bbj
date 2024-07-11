@@ -1,0 +1,48 @@
+rem templatedStrings.bbj
+rem Examples from company code CD Dynamo Tools
+
+rem  Templated Strings
+
+rem  String - non-repeating
+x$ = dd00.address$
+
+rem  Number - non-repeating
+x = dd00.mailerid
+
+rem  Integer - non-repeating
+x% = dd00.licbbusers%
+
+rem  String - repeating
+x$ = dd22.view$[20]
+
+rem  Number - repeating
+x = sw101.viewcol[2]
+
+rem  Integer - repeating
+x% = dd00.dates%[9]
+
+rem  BBjTemplatedString objects
+
+rem  String - non-repeating
+value$ = dd00!.getFieldAsString("address")
+dd00!.setFieldValue("address", value$)
+
+rem  Number - non-repeating
+value = dd00!.getFieldAsNumber("mailerid")
+dd00!.setFieldValue("mailerid", value)
+
+rem  Integer - non-repeating
+value% = int(dd00!.getFieldAsNumber("mailerid"))
+dd00!.setFieldValue("mailerid", value%)
+
+rem  String - repeating
+value$ = dd22!.getFieldAsString("view", 20)
+dd22!.setFieldValue("view", 20, value$)
+
+rem  Number - repeating
+value = sw101!.getFieldAsNumber("viewcol", 2)
+sw101!.setFieldValue("viewcol", 2, value)
+
+rem  Integer - repeating
+value% = dd00!.getFieldAsNumber("dates", 9)
+dd00!.setFieldValue("dates", 9, value%)
