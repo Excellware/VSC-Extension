@@ -1,0 +1,10 @@
+rem  calledRoutines.bbj
+rem  Dynamo Tools VS Code Extension will provide list of callable routines and arguments
+
+rem  Enter 'call' followed by space, and list of callable routines will display
+
+call 
+
+rem  Position cursor after trailing quote in program name, then touch Ctrl+Shift+Space to display arguments for called program
+
+call "CDS000"
