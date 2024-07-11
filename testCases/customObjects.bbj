@@ -1,0 +1,8 @@
+rem  customObjects.bbj
+
+rem  Dynamo Tools VS Code Extension will provide list of custom objects and signatures
+rem  The class name proposals will be displayed after touching the space bar after the keyword 'new'
+rem  The signature proposals will be displayed after touching the space bar after the class name
+
+view! = new DTView(BBjString cc!, BBjString DDName!, BBjString viewID!, BBjString filename$)
+
