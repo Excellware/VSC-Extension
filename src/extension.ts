@@ -309,10 +309,13 @@ export function activate(context: vscode.ExtensionContext) {
                 return fields.map((field: any) => {
                     const [name, type, description] = field.split(':');
                     const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
+                    
+                    const params = name.match(/(\w+)\$?(\[(\d+)\])?/);
+
                     if (ddname === ddname.toUpperCase()) {
-                        item.label = `${name.toUpperCase()}${type[0].toUpperCase() === 'U' ? '%' : ''}`; // Including additional information in the label
+                        item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toUpperCase();
                     } else {
-                        item.label = `${name.toLowerCase()}${type[0].toUpperCase() === 'U' ? '%' : ''}`; // Including additional information in the label
+                        item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toLowerCase();
                     }
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
                     return item;
