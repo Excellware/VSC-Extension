@@ -34,8 +34,8 @@ value$ = dd00!.getFieldAsString("address")
 dd00!.setFieldValue("address", value$)
 
 rem  Number - non-repeating
-value = dd00!.getFieldAsNumber("mailerid")
-dd00!.setFieldValue("mailerid", value)
+value = dd11!.getFieldAsNumber("min")
+dd11!.setFieldValue("min", value)
 
 rem  Integer - non-repeating
 value% = int(dd00!.getFieldAsNumber("mailerid"))
