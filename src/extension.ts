@@ -372,7 +372,7 @@ export function activate(context: vscode.ExtensionContext) {
                     item.sortText = `${sortIndex}`;
                     sortIndex++;
 
-                    item.label = `setFieldValue("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', '+param2 : ''}, ${(type[0].toUpperCase() === 'C' || type[0].toUpperCase() === 'O') ? 'value$' : (type[0].toUpperCase() === 'N') ? 'value%' : 'value'})`;
+                    item.label = `setFieldValue("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', '+param2 : ''}, ${(type[0].toUpperCase() === 'C' || type[0].toUpperCase() === 'O') ? 'value$' : (type[0].toUpperCase() === 'U' || type[0].toUpperCase() === 'I') ? 'value%' : 'value'})`;
 
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
 
