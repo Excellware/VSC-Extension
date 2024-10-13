@@ -10,21 +10,28 @@ rem    everything else -> numbers
 
 rem  String - non-repeating
 x$ = dd00.address$
+dd00.address$   OK
 
 rem  Number - non-repeating
 x = dd00.mailerid
+dd00.mailerid   OK
 
 rem  Integer - non-repeating
 x% = dd00.licbbusers%
+dd00.licbbusers%   OK
 
 rem  String - repeating
-x$ = dd22.view$[20]
+x$ = dd22.view$[20]  
+dd22.view$[20]   OK
+
 
 rem  Number - repeating
 x = sw101.viewcol[2]
+sw101.viewcol[2]   OK
 
 rem  Integer - repeating
 x% = dd00.dates%[9]
+dd00.dates%[9]   OK
 
 
 rem  BBjTemplatedString objects
@@ -32,23 +39,37 @@ rem  BBjTemplatedString objects
 rem  String - non-repeating
 value$ = dd00!.getFieldAsString("address")
 dd00!.setFieldValue("address", value$)
+dd00!.getFieldAsString("address")   OK
+dd00!.setFieldValue("address", value$)   OK
+
 
 rem  Number - non-repeating
-value = dd000!.getFieldAsNumber("mailerid")
+value = dd00!.getFieldAsNumber("mailerid")
 dd00!.setFieldValue("mailerid", value)
+dd00!.getFieldAsNumber("mailerid")  OK
+dd00!.setFieldValue("mailerid", value%)  WRONG
+
 
 rem  Integer - non-repeating
 value% = int(dd00!.getFieldAsNumber("logowidth"))
 dd00!.setFieldValue("logowidth", value%)
+dd00!.getFieldAsNumber("logowidth")  OK
+dd00!.setFieldValue("logowidth", value)  WRONG
 
 rem  String - repeating
 value$ = dd22!.getFieldAsString("view", 20)
-dd22!.setFieldValue("view", 20, value$)
+dd22!.setFieldValue("view", 20, value$) 
+dd22!.getFieldAsString("view", 20)  OK
+dd22!.setFieldValue("view", 20, value$)  OK
 
 rem  Number - repeating
 value = sw101!.getFieldAsNumber("viewcol", 2)
 sw101!.setFieldValue("viewcol", 2, value)
+sw101!.getFieldAsNumber("viewcol", 2)  OK
+sw101!.setFieldValue("viewcol", 2, value%)  WRONG
 
 rem  Integer - repeating
 value% = dd00!.getFieldAsNumber("dates", 9)
 dd00!.setFieldValue("dates", 9, value%)
+dd00!.getFieldAsNumber("dates", 9)  OK
+dd00!.setFieldValue("dates", 9, value)  WRONG
