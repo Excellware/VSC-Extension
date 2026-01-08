@@ -2,7 +2,7 @@
   "name": "dt",
   "displayName": "Dynamo Tools Extension",
   "publisher": "excellware",
-  "author": { "name": "Excellware, Inc." }
+  "author": { "name": "Excellware, Inc." },
   "description": "",
   "version": "0.0.2",
   "icon": "images/ToolsIcon.gif",
