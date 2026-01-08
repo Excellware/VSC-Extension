@@ -2,7 +2,7 @@
   "name": "dt",
   "displayName": "Dynamo Tools",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "Excellware, Inc.",
   "icon": "images/ToolsIcon.gif",
   "engines": {
@@ -34,7 +34,19 @@
     "commands": [
       {
         "command": "dt.settings",
-        "title": "Dynamo Tools"
+        "title": "Dynamo Tools: Company Libraries"
+      },
+      {
+        "command": "dt.openCompanyLibraries",
+        "title": "Dynamo Tools: Company Libraries"
+      },
+      {
+        "command": "dt.checkCompanyLibraryUpdates",
+        "title": "Dynamo Tools: Check for Company Library Updates"
+      },
+      {
+        "command": "dt.downloadCompanyLibraryUpdates",
+        "title": "Dynamo Tools: Download Company Library Updates"
       }
     ]
   },

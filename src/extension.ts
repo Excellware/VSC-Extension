@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { loadCompany } from './utils';
+import { getRemoteCompanyTimestamp, loadCompany } from './utils';
 
 function getFieldsByDdname(companyList: any, ddname: any) {
     for (const elem of companyList) {
@@ -65,12 +65,100 @@ export function activate(context: vscode.ExtensionContext) {
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, Dynamo Tools extension is now active!');
+    const output = vscode.window.createOutputChannel('Dynamo Tools');
+    context.subscriptions.push(output);
 
     if (!context.globalState.get("CompanyLibraries")) {
         context.globalState.update("CompanyLibraries", []);
     }
 
     let companyList: any = context.globalState.get("CompanyLibraries");
+    // Track the settings panel if open so other commands can refresh it.
+    let settingsPanel: vscode.WebviewPanel | undefined;
+
+    function getCompanySourceUrl(entry: any): string {
+        return entry?.sourceUrl || `https://dl.excellware.com/plugins/${entry?.company?.cc}.json`;
+    }
+
+    function normalizeCompanyEntry(entry: any) {
+        // Backward compatible: older saved entries won't have ms/url fields.
+        if (!entry) return entry;
+        if (!entry.sourceUrl) entry.sourceUrl = getCompanySourceUrl(entry);
+        if (typeof entry.localMs !== 'number') entry.localMs = Date.now();
+        if (typeof entry.localRemoteMs !== 'number' && entry.localRemoteMs !== null) entry.localRemoteMs = entry.remoteMs ?? null;
+        if (typeof entry.remoteMs !== 'number' && entry.remoteMs !== null) entry.remoteMs = null;
+        return entry;
+    }
+
+    async function refreshRemoteTimestamps(): Promise<{ success: boolean; msg: string; updated?: any[] }>
+    {
+        companyList = (context.globalState.get('CompanyLibraries') as any[]) || [];
+        companyList = companyList.map(normalizeCompanyEntry);
+
+        if (companyList.length === 0) {
+            return { success: true, msg: 'No company libraries configured.' };
+        }
+
+        output.appendLine(`[${new Date().toISOString()}] Refreshing remote timestamps for ${companyList.length} company libraries...`);
+
+        for (const entry of companyList) {
+            const url = getCompanySourceUrl(entry);
+            const cc = entry?.company?.cc || 'Unknown';
+            const res: any = await getRemoteCompanyTimestamp(url);
+            if (res.success) {
+                entry.remoteTime = res.remoteTime;
+                entry.remoteMs = res.remoteMs;
+                output.appendLine(`  ${cc}: remote=${entry.remoteTime}`);
+            } else {
+                output.appendLine(`  ${cc}: failed to refresh remote timestamp`);
+            }
+        }
+
+        await context.globalState.update('CompanyLibraries', companyList);
+        return { success: true, msg: 'Remote timestamps refreshed.', updated: companyList };
+    }
+
+    async function downloadUpdates(force = false): Promise<{ success: boolean; msg: string; updated?: any[] }>
+    {
+        // Always refresh remote timestamps first so we can compare.
+        const refreshed = await refreshRemoteTimestamps();
+        if (!refreshed.success) return refreshed;
+        companyList = refreshed.updated || companyList;
+
+        let updatedCount = 0;
+        for (let i = 0; i < companyList.length; i++) {
+            const entry = normalizeCompanyEntry(companyList[i]);
+            const cc = entry?.company?.cc || 'Unknown';
+
+            const needsUpdate = force ||
+                (typeof entry.remoteMs === 'number' && entry.remoteMs !== null &&
+                    (typeof entry.localRemoteMs !== 'number' || entry.localRemoteMs === null || entry.remoteMs > entry.localRemoteMs));
+
+            if (!needsUpdate) {
+                output.appendLine(`  ${cc}: up to date`);
+                continue;
+            }
+
+            const url = getCompanySourceUrl(entry);
+            output.appendLine(`  ${cc}: downloading ${url}`);
+            const data: any = await loadCompany(url);
+            if (data.success) {
+                // Keep ordering but replace the stored entry.
+                companyList[i] = data.data;
+                updatedCount++;
+                output.appendLine(`  ${cc}: updated`);
+            } else {
+                output.appendLine(`  ${cc}: download failed`);
+            }
+        }
+
+        await context.globalState.update('CompanyLibraries', companyList);
+        return {
+            success: true,
+            msg: updatedCount === 0 ? 'All company libraries are already up to date.' : `Updated ${updatedCount} company librar${updatedCount === 1 ? 'y' : 'ies'}.`,
+            updated: companyList
+        };
+    }
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with registerCommand
     // The commandId parameter must match the command field in package.json
@@ -88,13 +176,22 @@ export function activate(context: vscode.ExtensionContext) {
     //     }
     // });
 
-    const disposable = vscode.commands.registerCommand('dt.settings', () => {
+    const openSettings = () => {
+        // Re-read company list each time the panel opens, to reflect changes made by other commands.
+        companyList = (context.globalState.get('CompanyLibraries') as any[]) || [];
+        companyList = companyList.map(normalizeCompanyEntry);
+
         const panel = vscode.window.createWebviewPanel(
             'dataTable',  // Identifies the type of the webview used
             'Company libraries', // Title of the panel displayed to the user
             vscode.ViewColumn.One, // Editor column to show the new webview panel in.
             { enableScripts: true } // Webview options.
         );
+
+        settingsPanel = panel;
+        panel.onDidDispose(() => {
+            if (settingsPanel === panel) settingsPanel = undefined;
+        });
 
         // Handle messages from the webview
         panel.webview.onDidReceiveMessage(
@@ -121,7 +218,7 @@ export function activate(context: vscode.ExtensionContext) {
                             return;
                         }
 
-                        companyList.push(data.data);
+                        companyList.push(normalizeCompanyEntry(data.data));
                         context.globalState.update("CompanyLibraries", companyList);
                         panel.webview.postMessage({
                             command: 'add_company',
@@ -143,23 +240,86 @@ export function activate(context: vscode.ExtensionContext) {
                             });
                         }
                         break;
-                    case 'reorder_company':
+                    case 'set_order': {
+                        // Persist company ordering from the webview.
+                        const order: string[] = Array.isArray(message.order) ? message.order : [];
+                        if (order.length === 0) return;
+
+                        const byCc = new Map<string, any>();
+                        for (const entry of companyList) {
+                            if (entry?.company?.cc) byCc.set(entry.company.cc, entry);
+                        }
+                        const newList: any[] = [];
+                        for (const cc of order) {
+                            const entry = byCc.get(cc);
+                            if (entry) newList.push(entry);
+                        }
+                        // Append any missing entries (shouldn't happen, but keeps us safe).
+                        for (const entry of companyList) {
+                            if (!newList.includes(entry)) newList.push(entry);
+                        }
+                        companyList = newList;
+                        await context.globalState.update('CompanyLibraries', companyList);
+                        break;
+                    }
+                    case 'refresh_remote': {
+                        const res = await refreshRemoteTimestamps();
                         panel.webview.postMessage({
-                            command: 'reorder_company',
-                            data: {
-                                dir: message.dir
-                            },
-                            msg: ``,
-                            status: 'success'
+                            command: 'refresh_all',
+                            data: res.updated || companyList,
+                            msg: res.msg,
+                            status: res.success ? 'success' : 'error'
                         });
                         break;
+                    }
+                    case 'download_updates': {
+                        const res = await downloadUpdates(false);
+                        panel.webview.postMessage({
+                            command: 'refresh_all',
+                            data: res.updated || companyList,
+                            msg: res.msg,
+                            status: res.success ? 'success' : 'error'
+                        });
+                        break;
+                    }
                 }
             },
             undefined,
             context.subscriptions
         );
 
-        panel.webview.html = getHtmlForWebview(context.globalState.get("CompanyLibraries"));
+        panel.webview.html = getHtmlForWebview(companyList);
+    };
+
+    const disposable = vscode.commands.registerCommand('dt.settings', openSettings);
+
+    // Alias commands that are easier to discover.
+    const disposableOpen = vscode.commands.registerCommand('dt.openCompanyLibraries', openSettings);
+
+    const disposableCheck = vscode.commands.registerCommand('dt.checkCompanyLibraryUpdates', async () => {
+        const res = await refreshRemoteTimestamps();
+        vscode.window.showInformationMessage(res.msg);
+        if (settingsPanel) {
+            settingsPanel.webview.postMessage({
+                command: 'refresh_all',
+                data: res.updated || companyList,
+                msg: res.msg,
+                status: res.success ? 'success' : 'error'
+            });
+        }
+    });
+
+    const disposableDownload = vscode.commands.registerCommand('dt.downloadCompanyLibraryUpdates', async () => {
+        const res = await downloadUpdates(false);
+        vscode.window.showInformationMessage(res.msg);
+        if (settingsPanel) {
+            settingsPanel.webview.postMessage({
+                command: 'refresh_all',
+                data: res.updated || companyList,
+                msg: res.msg,
+                status: res.success ? 'success' : 'error'
+            });
+        }
     });
 
     // const provider1 = vscode.languages.registerCompletionItemProvider('plaintext', {
@@ -444,6 +604,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         disposable, 
+        disposableOpen,
+        disposableCheck,
+        disposableDownload,
         labelProvider, 
         checkProgramNameProvider, 
         checkProgramArgProvider, 
@@ -456,7 +619,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 function getHtmlForWebview(CompanyLibraries: any) {
     const tblContent = CompanyLibraries.map((elem: any) => `
-        <tr class="company-${elem.company.cc}">
+        <tr class="company-${elem.company.cc}" data-company-code="${elem.company.cc}">
             <th scope="row">${elem.company.cc}</th>
             <td>${elem.company.desc}</td>
             <td>${elem.localTime}</td>
@@ -520,6 +683,8 @@ function getHtmlForWebview(CompanyLibraries: any) {
                         <div>
                             <button type="button" id="btn-up" class="btn btn-success btn-sm disabled"><i class="fas fa-arrow-up"></i></button>
                             <button type="button" id="btn-down" class="btn btn-success btn-sm disabled"><i class="fas fa-arrow-down"></i></button>
+                            <button type="button" id="btn-refresh-remote" class="btn btn-secondary btn-sm">Refresh Remote</button>
+                            <button type="button" id="btn-download-updates" class="btn btn-secondary btn-sm">Download Updates</button>
                             <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#companyCodeAddModal">
                                 Add <i class="fas fa-plus"></i>
                             </button>
@@ -574,30 +739,50 @@ function getHtmlForWebview(CompanyLibraries: any) {
                 $(function () {
                     const vscode = acquireVsCodeApi();
 
+                    function buildRow(company) {
+                        const cc = company.company.cc;
+                        return ''
+                            + '<tr class="company-' + cc + '" data-company-code="' + cc + '">'
+                            +   '<th scope="row">' + cc + '</th>'
+                            +   '<td>' + company.company.desc + '</td>'
+                            +   '<td>' + (company.localTime || '') + '</td>'
+                            +   '<td>' + (company.remoteTime || '') + '</td>'
+                            +   '<td>'
+                            +     '<div class="btn-group" role="group">'
+                            +       '<button class="btn btn-danger btn-sm btn-company-remove" data-company-code="' + cc + '">'
+                            +         '<i class="fas fa-trash-alt"></i>'
+                            +       '</button>'
+                            +     '</div>'
+                            +   '</td>'
+                            + '</tr>';
+                    }
+
+                    function renderTable(libraries) {
+                        const rows = (libraries || []).map(buildRow).join('');
+                        $('.table-company-library tbody').html(rows);
+                        $('.table-company-library tr').removeClass('table-active');
+                        updateButtonStates();
+                    }
+
+                    function persistOrder() {
+                        const order = [];
+                        $('.table-company-library tbody tr').each(function() {
+                            const cc = $(this).data('company-code');
+                            if (cc) order.push(String(cc));
+                        });
+                        vscode.postMessage({ command: 'set_order', order });
+                    }
+
                     window.addEventListener('message', event => {
                         const message = event.data; // The JSON data from the extension
 
                         switch (message.command) {
                             case 'add_company':
                                 if (message.data) {
-                                    const row = \`
-                                        <tr class="company-\${message.data.company.cc}">
-                                            <th scope="row">\${message.data.company.cc}</th>
-                                            <td>\${message.data.company.desc}</td>
-                                            <td>\${message.data.localTime}</td>
-                                            <td>\${message.data.remoteTime}</td>
-                                            <td>
-                                                <div class="btn-group" role="group">
-                                                    <button class="btn btn-danger btn-sm btn-company-remove" data-company-code="\${message.data.company.cc}">
-                                                        <i class="fas fa-trash-alt"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>\`;
-
-                                    $('.table-company-library tbody').append(row);
+                                    $('.table-company-library tbody').append(buildRow(message.data));
                                     $("#companyCodeAddModal").modal('hide');
                                     $('#input-company-code').val('');
+                                    persistOrder();
                                     showToast(message.msg, message.status);
                                 } else {
                                     showToast(message.msg, message.status);
@@ -605,18 +790,14 @@ function getHtmlForWebview(CompanyLibraries: any) {
                                 break;
                             case 'remove_company':
                                 $("tr.company-"+message.data).remove();
+                                persistOrder();
                                 showToast(message.msg, message.status);
                                 break;
-                            case 'reorder_company':
-                                if (message.data.dir == "up") {
-                                    var selectedRow = $('.table-company-library tr.table-active');
-                                    selectedRow.prev().before(selectedRow);
-                                    updateButtonStates();
-                                } else {
-                                    var selectedRow = $('.table-company-library tr.table-active');
-                                    selectedRow.next().after(selectedRow);
-                                    updateButtonStates();
+                            case 'refresh_all':
+                                if (Array.isArray(message.data)) {
+                                    renderTable(message.data);
                                 }
+                                showToast(message.msg, message.status);
                                 break;
                         }
                     });
@@ -647,21 +828,25 @@ function getHtmlForWebview(CompanyLibraries: any) {
                     });
 
                     $('#btn-up').click(function() {
-                        var companyCode = $('.table-company-library tr.table-active').data('company-code');
-                        vscode.postMessage({
-                            command: 'reorder_company',
-                            companyCode,
-                            dir: 'up'
-                        });
+                        var selectedRow = $('.table-company-library tr.table-active');
+                        selectedRow.prev().before(selectedRow);
+                        persistOrder();
+                        updateButtonStates();
                     });
 
                     $('#btn-down').click(function() {
-                        var companyCode = $('.table-company-library tr.table-active').data('company-code');
-                        vscode.postMessage({
-                            command: 'reorder_company',
-                            companyCode,
-                            dir: 'down'
-                        });
+                        var selectedRow = $('.table-company-library tr.table-active');
+                        selectedRow.next().after(selectedRow);
+                        persistOrder();
+                        updateButtonStates();
+                    });
+
+                    $('#btn-refresh-remote').click(function() {
+                        vscode.postMessage({ command: 'refresh_remote' });
+                    });
+
+                    $('#btn-download-updates').click(function() {
+                        vscode.postMessage({ command: 'download_updates' });
                     });
 
                     function updateButtonStates() {
