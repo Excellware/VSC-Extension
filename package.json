@@ -1,9 +1,10 @@
 {
   "name": "dt",
-  "displayName": "Dynamo Tools",
+  "displayName": "Dynamo Tools Extension",
+  "publisher": "excellware",
+  "author": { "name": "Excellware, Inc." }
   "description": "",
   "version": "0.0.2",
-  "publisher": "Excellware, Inc.",
   "icon": "images/ToolsIcon.gif",
   "engines": {
     "vscode": "^1.90.0"
