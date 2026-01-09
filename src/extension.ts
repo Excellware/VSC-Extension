@@ -430,7 +430,16 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const normalizeArgs = (opt: any): string => {
                     if (opt === undefined || opt === null) return '';
-                    return String(opt).trim().replace(/^,/, '').trim();
+                    const raw = String(opt).trim().replace(/^,/, '').trim();
+                    if (!raw) return '';
+
+                    // Ensure there is a space after each comma in the argument list.
+                    // Example: "A,B, C" -> "A, B, C"
+                    return raw
+                        .split(',')
+                        .map(part => part.trim())
+                        .filter(part => part.length > 0)
+                        .join(', ');
                 };
 
                 for (const elem of programs) {
