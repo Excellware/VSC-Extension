@@ -378,35 +378,121 @@ export function activate(context: vscode.ExtensionContext) {
         ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                // Only offer label completion in known "line label argument" contexts.
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+
+                // Verbs that take labels: goto, gosub, on goto, on gosub.
+                const verbContext = /\b(on\s+)?(goto|gosub)\s+[^]*$/i.test(linePrefix);
+
+                // Clauses that take labels: err=, end=, dom=, tbl=
+                const clauseContext = /\b(err|end|dom|tbl)\s*=\s*[^]*$/i.test(linePrefix);
+
+                if (!verbContext && !clauseContext) {
+                    return undefined;
+                }
+
+                // Symbolic labels in required order.
                 const symbolicLineLabels = [
                     "*next",
                     "*break",
                     "*continue",
-                    "*endif",
-                    "*retry",
-                    "*same",
-                    "*proceed",
                     "*return",
                     "*exit",
+                    "*proceed",
+                    "*same",
+                    "*retry",
+                    "*escape",
                     "*stop",
                     "*end",
-                    "*escape"
+                    "*endif",
                 ];
 
-                const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                const patterns = ['end=', 'dom=', 'err=', 'iol=', 'goto=', 'gosub=', 'seterr=', 'setesc='];
+                const normalize = (s: string) => s.trim().toLowerCase();
+                const seen = new Set<string>();
 
-                if (!patterns.some(elem => linePrefix.endsWith(elem))) {
-                    return undefined;
+                const mkItem = (label: string, sortText: string) => {
+                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Reference);
+                    item.insertText = label;
+                    item.sortText = sortText;
+                    item.filterText = label;
+                    return item;
+                };
+
+                const items: vscode.CompletionItem[] = [];
+
+                // Add symbolic first.
+                symbolicLineLabels.forEach((lbl, idx) => {
+                    const key = normalize(lbl);
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    items.push(mkItem(lbl, `0${String(idx).padStart(2, '0')}`));
+                });
+
+                // Helper to find method bounds that contain the cursor.
+                const isMethod = (text: string) => /^\s*method\b/i.test(text);
+                const isMethodEnd = (text: string) => /^\s*methodend\b/i.test(text);
+
+                let inMethod = false;
+                let methodStartLine = -1;
+
+                // Scan from top to cursor line to determine whether cursor is inside a method.
+                for (let i = 0; i <= position.line; i++) {
+                    const t = document.lineAt(i).text;
+                    if (isMethod(t)) {
+                        inMethod = true;
+                        methodStartLine = i;
+                        continue;
+                    }
+                    if (isMethodEnd(t)) {
+                        inMethod = false;
+                        methodStartLine = -1;
+                        continue;
+                    }
                 }
 
-                return symbolicLineLabels.map(label => {
-                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Text);
-                    return item;
-                });
+                let scanStart = 0;
+                let scanEnd = document.lineCount - 1;
+
+                if (inMethod && methodStartLine >= 0) {
+                    // Find the matching methodend after the cursor line.
+                    let methodEndLine = document.lineCount - 1;
+                    for (let i = position.line; i < document.lineCount; i++) {
+                        const t = document.lineAt(i).text;
+                        if (isMethodEnd(t)) {
+                            methodEndLine = i;
+                            break;
+                        }
+                    }
+                    // Only scan lines inside method body (exclusive of method/methodend lines).
+                    scanStart = Math.min(methodStartLine + 1, document.lineCount - 1);
+                    scanEnd = Math.max(methodEndLine - 1, scanStart);
+                }
+
+                // Extract line labels: first non-blank token ending with ":" (e.g. log:)
+                const labelRe = /^\s*([A-Za-z_][A-Za-z0-9_!]*)\s*:\s*/;
+
+                for (let i = scanStart; i <= scanEnd; i++) {
+                    const lineText = document.lineAt(i).text;
+                    const m = lineText.match(labelRe);
+                    if (!m) continue;
+
+                    const lbl = m[1];
+                    const key = normalize(lbl);
+                    if (seen.has(key)) continue;
+
+                    seen.add(key);
+                    // Keep program labels after symbolic ones, in file order.
+                    items.push(mkItem(lbl, `1${String(i).padStart(6, '0')}`));
+                }
+
+                return items;
             }
-        }
+        },
+        ' ',
+        '=',
+        ','
     );
+
 
     const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
