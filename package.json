@@ -1,9 +1,14 @@
 {
   "name": "dt",
-  "displayName": "Dynamo Tools",
+  "displayName": "Dynamo Tools Extension",
+  "publisher": "excellware",
+  "author": { "name": "Excellware, Inc." },
   "description": "",
-  "version": "0.0.1",
-  "publisher": "Excellware, Inc.",
+  "version": "0.0.8",
+  "publisher": "excellware",
+  "author": {
+    "name": "Excellware, Inc."
+  },
   "icon": "images/ToolsIcon.gif",
   "engines": {
     "vscode": "^1.90.0"
@@ -34,9 +39,29 @@
     "commands": [
       {
         "command": "dt.settings",
-        "title": "Dynamo Tools"
+        "title": "Dynamo Tools: Company Libraries"
+      },
+      {
+        "command": "dt.openCompanyLibraries",
+        "title": "Dynamo Tools: Company Libraries"
+      },
+      {
+        "command": "dt.checkCompanyLibraryUpdates",
+        "title": "Dynamo Tools: Check for Company Library Updates"
+      },
+      {
+        "command": "dt.downloadCompanyLibraryUpdates",
+        "title": "Dynamo Tools: Download Company Library Updates"
       }
-    ]
+    ],
+    "menus": {
+      "extension/context": [
+        {
+          "command": "dt.settings",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

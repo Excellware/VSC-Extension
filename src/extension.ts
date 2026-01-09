@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { loadCompany } from './utils';
+import { getRemoteCompanyTimestamp, loadCompany } from './utils';
 
 function getFieldsByDdname(companyList: any, ddname: any) {
     for (const elem of companyList) {
@@ -38,12 +38,22 @@ function getProgramArgs(companyList: any, pgm: any) {
 }
 
 function getClasses(companyList: any) {
-    let classes: any = [];
+    // Company libraries can overlap; avoid showing duplicate class names (e.g. after typing `new `).
+    // Preserve the configured company search order by keeping the first occurrence.
+    const seen = new Set<string>();
+    const classes: any[] = [];
+
     for (const elem of companyList) {
-        classes = classes.concat(elem.company.classes);
-        // return elem.company.classes.map((e: any) => e.classname);
+        const list = elem?.company?.classes || [];
+        for (const c of list) {
+            const name = c?.classname;
+            if (!name) continue;
+            if (seen.has(name)) continue;
+            seen.add(name);
+            classes.push(c);
+        }
     }
-    
+
     return classes;
 }
 
@@ -65,12 +75,100 @@ export function activate(context: vscode.ExtensionContext) {
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, Dynamo Tools extension is now active!');
+    const output = vscode.window.createOutputChannel('Dynamo Tools');
+    context.subscriptions.push(output);
 
     if (!context.globalState.get("CompanyLibraries")) {
         context.globalState.update("CompanyLibraries", []);
     }
 
     let companyList: any = context.globalState.get("CompanyLibraries");
+    // Track the settings panel if open so other commands can refresh it.
+    let settingsPanel: vscode.WebviewPanel | undefined;
+
+    function getCompanySourceUrl(entry: any): string {
+        return entry?.sourceUrl || `https://dl.excellware.com/plugins/${entry?.company?.cc}.json`;
+    }
+
+    function normalizeCompanyEntry(entry: any) {
+        // Backward compatible: older saved entries won't have ms/url fields.
+        if (!entry) return entry;
+        if (!entry.sourceUrl) entry.sourceUrl = getCompanySourceUrl(entry);
+        if (typeof entry.localMs !== 'number') entry.localMs = Date.now();
+        if (typeof entry.localRemoteMs !== 'number' && entry.localRemoteMs !== null) entry.localRemoteMs = entry.remoteMs ?? null;
+        if (typeof entry.remoteMs !== 'number' && entry.remoteMs !== null) entry.remoteMs = null;
+        return entry;
+    }
+
+    async function refreshRemoteTimestamps(): Promise<{ success: boolean; msg: string; updated?: any[] }>
+    {
+        companyList = (context.globalState.get('CompanyLibraries') as any[]) || [];
+        companyList = companyList.map(normalizeCompanyEntry);
+
+        if (companyList.length === 0) {
+            return { success: true, msg: 'No company libraries configured.' };
+        }
+
+        output.appendLine(`[${new Date().toISOString()}] Refreshing remote timestamps for ${companyList.length} company libraries...`);
+
+        for (const entry of companyList) {
+            const url = getCompanySourceUrl(entry);
+            const cc = entry?.company?.cc || 'Unknown';
+            const res: any = await getRemoteCompanyTimestamp(url);
+            if (res.success) {
+                entry.remoteTime = res.remoteTime;
+                entry.remoteMs = res.remoteMs;
+                output.appendLine(`  ${cc}: remote=${entry.remoteTime}`);
+            } else {
+                output.appendLine(`  ${cc}: failed to refresh remote timestamp`);
+            }
+        }
+
+        await context.globalState.update('CompanyLibraries', companyList);
+        return { success: true, msg: 'Remote timestamps refreshed.', updated: companyList };
+    }
+
+    async function downloadUpdates(force = false): Promise<{ success: boolean; msg: string; updated?: any[] }>
+    {
+        // Always refresh remote timestamps first so we can compare.
+        const refreshed = await refreshRemoteTimestamps();
+        if (!refreshed.success) return refreshed;
+        companyList = refreshed.updated || companyList;
+
+        let updatedCount = 0;
+        for (let i = 0; i < companyList.length; i++) {
+            const entry = normalizeCompanyEntry(companyList[i]);
+            const cc = entry?.company?.cc || 'Unknown';
+
+            const needsUpdate = force ||
+                (typeof entry.remoteMs === 'number' && entry.remoteMs !== null &&
+                    (typeof entry.localRemoteMs !== 'number' || entry.localRemoteMs === null || entry.remoteMs > entry.localRemoteMs));
+
+            if (!needsUpdate) {
+                output.appendLine(`  ${cc}: up to date`);
+                continue;
+            }
+
+            const url = getCompanySourceUrl(entry);
+            output.appendLine(`  ${cc}: downloading ${url}`);
+            const data: any = await loadCompany(url);
+            if (data.success) {
+                // Keep ordering but replace the stored entry.
+                companyList[i] = data.data;
+                updatedCount++;
+                output.appendLine(`  ${cc}: updated`);
+            } else {
+                output.appendLine(`  ${cc}: download failed`);
+            }
+        }
+
+        await context.globalState.update('CompanyLibraries', companyList);
+        return {
+            success: true,
+            msg: updatedCount === 0 ? 'All company libraries are already up to date.' : `Updated ${updatedCount} company librar${updatedCount === 1 ? 'y' : 'ies'}.`,
+            updated: companyList
+        };
+    }
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with registerCommand
     // The commandId parameter must match the command field in package.json
@@ -88,13 +186,22 @@ export function activate(context: vscode.ExtensionContext) {
     //     }
     // });
 
-    const disposable = vscode.commands.registerCommand('dt.settings', () => {
+    const openSettings = () => {
+        // Re-read company list each time the panel opens, to reflect changes made by other commands.
+        companyList = (context.globalState.get('CompanyLibraries') as any[]) || [];
+        companyList = companyList.map(normalizeCompanyEntry);
+
         const panel = vscode.window.createWebviewPanel(
             'dataTable',  // Identifies the type of the webview used
-            'Company libraries', // Title of the panel displayed to the user
+            'Company Libraries', // Title of the panel displayed to the user
             vscode.ViewColumn.One, // Editor column to show the new webview panel in.
             { enableScripts: true } // Webview options.
         );
+
+        settingsPanel = panel;
+        panel.onDidDispose(() => {
+            if (settingsPanel === panel) settingsPanel = undefined;
+        });
 
         // Handle messages from the webview
         panel.webview.onDidReceiveMessage(
@@ -121,7 +228,7 @@ export function activate(context: vscode.ExtensionContext) {
                             return;
                         }
 
-                        companyList.push(data.data);
+                        companyList.push(normalizeCompanyEntry(data.data));
                         context.globalState.update("CompanyLibraries", companyList);
                         panel.webview.postMessage({
                             command: 'add_company',
@@ -143,23 +250,86 @@ export function activate(context: vscode.ExtensionContext) {
                             });
                         }
                         break;
-                    case 'reorder_company':
+                    case 'set_order': {
+                        // Persist company ordering from the webview.
+                        const order: string[] = Array.isArray(message.order) ? message.order : [];
+                        if (order.length === 0) return;
+
+                        const byCc = new Map<string, any>();
+                        for (const entry of companyList) {
+                            if (entry?.company?.cc) byCc.set(entry.company.cc, entry);
+                        }
+                        const newList: any[] = [];
+                        for (const cc of order) {
+                            const entry = byCc.get(cc);
+                            if (entry) newList.push(entry);
+                        }
+                        // Append any missing entries (shouldn't happen, but keeps us safe).
+                        for (const entry of companyList) {
+                            if (!newList.includes(entry)) newList.push(entry);
+                        }
+                        companyList = newList;
+                        await context.globalState.update('CompanyLibraries', companyList);
+                        break;
+                    }
+                    case 'refresh_remote': {
+                        const res = await refreshRemoteTimestamps();
                         panel.webview.postMessage({
-                            command: 'reorder_company',
-                            data: {
-                                dir: message.dir
-                            },
-                            msg: ``,
-                            status: 'success'
+                            command: 'refresh_all',
+                            data: res.updated || companyList,
+                            msg: res.msg,
+                            status: res.success ? 'success' : 'error'
                         });
                         break;
+                    }
+                    case 'download_updates': {
+                        const res = await downloadUpdates(false);
+                        panel.webview.postMessage({
+                            command: 'refresh_all',
+                            data: res.updated || companyList,
+                            msg: res.msg,
+                            status: res.success ? 'success' : 'error'
+                        });
+                        break;
+                    }
                 }
             },
             undefined,
             context.subscriptions
         );
 
-        panel.webview.html = getHtmlForWebview(context.globalState.get("CompanyLibraries"));
+        panel.webview.html = getHtmlForWebview(companyList);
+    };
+
+    const disposable = vscode.commands.registerCommand('dt.settings', openSettings);
+
+    // Alias commands that are easier to discover.
+    const disposableOpen = vscode.commands.registerCommand('dt.openCompanyLibraries', openSettings);
+
+    const disposableCheck = vscode.commands.registerCommand('dt.checkCompanyLibraryUpdates', async () => {
+        const res = await refreshRemoteTimestamps();
+        vscode.window.showInformationMessage(res.msg);
+        if (settingsPanel) {
+            settingsPanel.webview.postMessage({
+                command: 'refresh_all',
+                data: res.updated || companyList,
+                msg: res.msg,
+                status: res.success ? 'success' : 'error'
+            });
+        }
+    });
+
+    const disposableDownload = vscode.commands.registerCommand('dt.downloadCompanyLibraryUpdates', async () => {
+        const res = await downloadUpdates(false);
+        vscode.window.showInformationMessage(res.msg);
+        if (settingsPanel) {
+            settingsPanel.webview.postMessage({
+                command: 'refresh_all',
+                data: res.updated || companyList,
+                msg: res.msg,
+                status: res.success ? 'success' : 'error'
+            });
+        }
     });
 
     // const provider1 = vscode.languages.registerCompletionItemProvider('plaintext', {
@@ -208,35 +378,121 @@ export function activate(context: vscode.ExtensionContext) {
         ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                // Only offer label completion in known "line label argument" contexts.
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+
+                // Verbs that take labels: goto, gosub, on goto, on gosub.
+                const verbContext = /\b(on\s+)?(goto|gosub)\s+[^]*$/i.test(linePrefix);
+
+                // Clauses that take labels: err=, end=, dom=, tbl=
+                const clauseContext = /\b(err|end|dom|tbl)\s*=\s*[^]*$/i.test(linePrefix);
+
+                if (!verbContext && !clauseContext) {
+                    return undefined;
+                }
+
+                // Symbolic labels in required order.
                 const symbolicLineLabels = [
                     "*next",
                     "*break",
                     "*continue",
-                    "*endif",
-                    "*retry",
-                    "*same",
-                    "*proceed",
                     "*return",
                     "*exit",
+                    "*proceed",
+                    "*same",
+                    "*retry",
+                    "*escape",
                     "*stop",
                     "*end",
-                    "*escape"
+                    "*endif",
                 ];
 
-                const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                const patterns = ['end=', 'dom=', 'err=', 'iol=', 'goto=', 'gosub=', 'seterr=', 'setesc='];
+                const normalize = (s: string) => s.trim().toLowerCase();
+                const seen = new Set<string>();
 
-                if (!patterns.some(elem => linePrefix.endsWith(elem))) {
-                    return undefined;
+                const mkItem = (label: string, sortText: string) => {
+                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Reference);
+                    item.insertText = label;
+                    item.sortText = sortText;
+                    item.filterText = label;
+                    return item;
+                };
+
+                const items: vscode.CompletionItem[] = [];
+
+                // Add symbolic first.
+                symbolicLineLabels.forEach((lbl, idx) => {
+                    const key = normalize(lbl);
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    items.push(mkItem(lbl, `0${String(idx).padStart(2, '0')}`));
+                });
+
+                // Helper to find method bounds that contain the cursor.
+                const isMethod = (text: string) => /^\s*method\b/i.test(text);
+                const isMethodEnd = (text: string) => /^\s*methodend\b/i.test(text);
+
+                let inMethod = false;
+                let methodStartLine = -1;
+
+                // Scan from top to cursor line to determine whether cursor is inside a method.
+                for (let i = 0; i <= position.line; i++) {
+                    const t = document.lineAt(i).text;
+                    if (isMethod(t)) {
+                        inMethod = true;
+                        methodStartLine = i;
+                        continue;
+                    }
+                    if (isMethodEnd(t)) {
+                        inMethod = false;
+                        methodStartLine = -1;
+                        continue;
+                    }
                 }
 
-                return symbolicLineLabels.map(label => {
-                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Text);
-                    return item;
-                });
+                let scanStart = 0;
+                let scanEnd = document.lineCount - 1;
+
+                if (inMethod && methodStartLine >= 0) {
+                    // Find the matching methodend after the cursor line.
+                    let methodEndLine = document.lineCount - 1;
+                    for (let i = position.line; i < document.lineCount; i++) {
+                        const t = document.lineAt(i).text;
+                        if (isMethodEnd(t)) {
+                            methodEndLine = i;
+                            break;
+                        }
+                    }
+                    // Only scan lines inside method body (exclusive of method/methodend lines).
+                    scanStart = Math.min(methodStartLine + 1, document.lineCount - 1);
+                    scanEnd = Math.max(methodEndLine - 1, scanStart);
+                }
+
+                // Extract line labels: first non-blank token ending with ":" (e.g. log:)
+                const labelRe = /^\s*([A-Za-z_][A-Za-z0-9_!]*)\s*:\s*/;
+
+                for (let i = scanStart; i <= scanEnd; i++) {
+                    const lineText = document.lineAt(i).text;
+                    const m = lineText.match(labelRe);
+                    if (!m) continue;
+
+                    const lbl = m[1];
+                    const key = normalize(lbl);
+                    if (seen.has(key)) continue;
+
+                    seen.add(key);
+                    // Keep program labels after symbolic ones, in file order.
+                    items.push(mkItem(lbl, `1${String(i).padStart(6, '0')}`));
+                }
+
+                return items;
             }
-        }
+        },
+        ' ',
+        '=',
+        ','
     );
+
 
     const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
@@ -252,13 +508,60 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!programs) {
                     return undefined;
                 }
-                // Return specific suggestions for "new "
-                return programs.map((elem: any) => {
-                    const item = new vscode.CompletionItem(elem.pgm, vscode.CompletionItemKind.Field);
-                    item.detail = `${elem.title}`; // Type displayed in the detail property
-                    item.insertText = `"${elem.pgm}"`; // Insert text when the item is selected
-                    return item;
-                });
+                // Suggest callable programs after: call
+                // Show description alongside the program name and make the description searchable.
+                // Automatically include argument lists in the completion insert text.
+                // If there are multiple argument options (overloads), show multiple entries (Option 1, Option 2, ...).
+                const items: vscode.CompletionItem[] = [];
+
+                const normalizeArgs = (opt: any): string => {
+                    if (opt === undefined || opt === null) return '';
+                    const raw = String(opt).trim().replace(/^,/, '').trim();
+                    if (!raw) return '';
+
+                    // Ensure there is a space after each comma in the argument list.
+                    // Example: "A,B, C" -> "A, B, C"
+                    return raw
+                        .split(',')
+                        .map(part => part.trim())
+                        .filter(part => part.length > 0)
+                        .join(', ');
+                };
+
+                for (const elem of programs) {
+                    const argsOptions: any[] = (getProgramArgs(companyList, elem.pgm) as any) || [];
+
+                    const addItem = (optionSuffix: string | undefined, argsOpt: any) => {
+                        const argsText = normalizeArgs(argsOpt);
+                        const label: vscode.CompletionItemLabel = {
+                            label: elem.pgm,
+                            description: optionSuffix ? `${elem.title} ${optionSuffix}` : elem.title
+                        };
+
+                        const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Function);
+
+                        // Display a fuller description in the details pane.
+                        item.detail = `${elem.title}`;
+
+                        // Make the description (and args) searchable in the completion list.
+                        item.filterText = `${elem.pgm} ${elem.title} ${argsText}`;
+
+                        // Insert text when the item is selected.
+                        // This removes the need to invoke Ctrl+Shift+Space just to get the argument list.
+                        item.insertText = argsText.length > 0 ? `"${elem.pgm}", ${argsText}` : `"${elem.pgm}"`;
+                        items.push(item);
+                    };
+
+                    if (argsOptions.length > 1) {
+                        argsOptions.forEach((opt, idx) => addItem(`(Option ${idx + 1})`, opt));
+                    } else if (argsOptions.length === 1) {
+                        addItem(undefined, argsOptions[0]);
+                    } else {
+                        addItem(undefined, '');
+                    }
+                }
+
+                return items;
             },
         },
         ' '
@@ -268,24 +571,80 @@ export function activate(context: vscode.ExtensionContext) {
         ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
-                // Check if the user has typed "new "
+                // Provide argument list *options* for a callable program after: call "PGM"
+                // This is used for inserting the full argument list (e.g. , arg1, arg2) when the user triggers completion.
                 const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                const lastWordMatch = linePrefix.match(/call "(\w+)"$/);
-                if (!lastWordMatch) {
-                    return undefined;
-                }
-                
-                const args = getProgramArgs(companyList, lastWordMatch[1]);
 
-                let items: any = [];
-                for (let i = 0; i < args.length; i++) {
-                    const item = new vscode.CompletionItem(args[i], vscode.CompletionItemKind.Field);
-                    items.push(item);
-                }
+                // Match:
+                //   call "PGM"
+                //   call "PGM",
+                //   call "PGM",
+                const m = linePrefix.match(/\bcall\s+"(\w+)"\s*,?\s*$/i);
+                if (!m) return undefined;
 
-                return items;
+                const pgm = m[1];
+                const args = getProgramArgs(companyList, pgm);
+                if (!args || !Array.isArray(args) || args.length === 0) return undefined;
+
+                const hasComma = /\bcall\s+"\w+"\s*,\s*$/i.test(linePrefix);
+
+                return args.map((opt: string, idx: number) => {
+                    const normalized = (opt || '').split(',').map(s => s.trim()).filter(Boolean).join(', ');
+                    const label: vscode.CompletionItemLabel = {
+                        label: args.length > 1 ? `Option ${idx + 1}` : 'Arguments',
+                        description: normalized
+                    };
+
+                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Snippet);
+                    item.detail = 'Callable program arguments';
+                    item.documentation = new vscode.MarkdownString(normalized || opt);
+
+                    // Insert the argument list. If the call already ends with a comma, don't add another.
+                    item.insertText = hasComma ? `${normalized}` : `, ${normalized}`;
+                    return item;
+                });
             },
         },
+    );
+
+    // Parameter hints for callable programs:
+    // Show argument signatures (including multiple options) when the user invokes Ctrl+Shift+Space.
+    const callableSignatureProvider = vscode.languages.registerSignatureHelpProvider(
+        ['plaintext', 'bbj'],
+        {
+            provideSignatureHelp(document: vscode.TextDocument, position: vscode.Position): vscode.SignatureHelp | undefined {
+                const lineText = document.lineAt(position).text;
+                const beforeCursor = lineText.substring(0, position.character);
+
+                const m = beforeCursor.match(/\bcall\s+"(\w+)"/i);
+                if (!m) return undefined;
+
+                const pgm = m[1];
+                const args = getProgramArgs(companyList, pgm);
+                if (!args || !Array.isArray(args) || args.length === 0) return undefined;
+
+                // Count commas after the program name to determine the active parameter.
+                const afterProgram = beforeCursor.split(`"${pgm}"`)[1] || '';
+                const commaCount = (afterProgram.match(/,/g) || []).length;
+                const activeParam = Math.max(0, commaCount - 1); // first comma introduces param 0
+
+                const sigHelp = new vscode.SignatureHelp();
+                sigHelp.activeSignature = 0;
+                sigHelp.activeParameter = activeParam;
+
+                sigHelp.signatures = args.map((opt: string) => {
+                    const normalized = (opt || '').split(',').map(s => s.trim()).filter(Boolean);
+                    const label = `call "${pgm}", ${normalized.join(', ')}`;
+
+                    const sig = new vscode.SignatureInformation(label);
+                    sig.parameters = normalized.map(p => new vscode.ParameterInformation(p));
+                    return sig;
+                });
+
+                return sigHelp;
+            }
+        },
+        ',', ' '
     );
 
     const dataProvider = vscode.languages.registerCompletionItemProvider(
@@ -444,9 +803,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         disposable, 
+        disposableOpen,
+        disposableCheck,
+        disposableDownload,
         labelProvider, 
         checkProgramNameProvider, 
         checkProgramArgProvider, 
+        callableSignatureProvider,
         dataProvider,
         bbjTemplatedStringProvider,
         classProvider, 
@@ -456,7 +819,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 function getHtmlForWebview(CompanyLibraries: any) {
     const tblContent = CompanyLibraries.map((elem: any) => `
-        <tr class="company-${elem.company.cc}">
+        <tr class="company-${elem.company.cc}" data-company-code="${elem.company.cc}">
             <th scope="row">${elem.company.cc}</th>
             <td>${elem.company.desc}</td>
             <td>${elem.localTime}</td>
@@ -477,7 +840,7 @@ function getHtmlForWebview(CompanyLibraries: any) {
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
             <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-            <title>Company libraries</title>
+            <title>Company Libraries</title>
             <style>
                 #toast {
                     visibility: hidden;
@@ -520,6 +883,8 @@ function getHtmlForWebview(CompanyLibraries: any) {
                         <div>
                             <button type="button" id="btn-up" class="btn btn-success btn-sm disabled"><i class="fas fa-arrow-up"></i></button>
                             <button type="button" id="btn-down" class="btn btn-success btn-sm disabled"><i class="fas fa-arrow-down"></i></button>
+                            <button type="button" id="btn-refresh-remote" class="btn btn-secondary btn-sm">Refresh Remote</button>
+                            <button type="button" id="btn-download-updates" class="btn btn-secondary btn-sm">Download Updates</button>
                             <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#companyCodeAddModal">
                                 Add <i class="fas fa-plus"></i>
                             </button>
@@ -574,30 +939,65 @@ function getHtmlForWebview(CompanyLibraries: any) {
                 $(function () {
                     const vscode = acquireVsCodeApi();
 
+                    // UX polish: when the Add modal opens, focus the Company Code input
+                    // and allow Enter to submit (same as clicking OK).
+                    $('#companyCodeAddModal').on('shown.bs.modal', function () {
+                        const $input = $('#input-company-code');
+                        $input.trigger('focus');
+                        $input.select();
+                    });
+
+                    $('#input-company-code').on('keydown', function (e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            $('#btn-company-load').trigger('click');
+                        }
+                    });
+
+                    function buildRow(company) {
+                        const cc = company.company.cc;
+                        return ''
+                            + '<tr class="company-' + cc + '" data-company-code="' + cc + '">'
+                            +   '<th scope="row">' + cc + '</th>'
+                            +   '<td>' + company.company.desc + '</td>'
+                            +   '<td>' + (company.localTime || '') + '</td>'
+                            +   '<td>' + (company.remoteTime || '') + '</td>'
+                            +   '<td>'
+                            +     '<div class="btn-group" role="group">'
+                            +       '<button class="btn btn-danger btn-sm btn-company-remove" data-company-code="' + cc + '">'
+                            +         '<i class="fas fa-trash-alt"></i>'
+                            +       '</button>'
+                            +     '</div>'
+                            +   '</td>'
+                            + '</tr>';
+                    }
+
+                    function renderTable(libraries) {
+                        const rows = (libraries || []).map(buildRow).join('');
+                        $('.table-company-library tbody').html(rows);
+                        $('.table-company-library tr').removeClass('table-active');
+                        updateButtonStates();
+                    }
+
+                    function persistOrder() {
+                        const order = [];
+                        $('.table-company-library tbody tr').each(function() {
+                            const cc = $(this).data('company-code');
+                            if (cc) order.push(String(cc));
+                        });
+                        vscode.postMessage({ command: 'set_order', order });
+                    }
+
                     window.addEventListener('message', event => {
                         const message = event.data; // The JSON data from the extension
 
                         switch (message.command) {
                             case 'add_company':
                                 if (message.data) {
-                                    const row = \`
-                                        <tr class="company-\${message.data.company.cc}">
-                                            <th scope="row">\${message.data.company.cc}</th>
-                                            <td>\${message.data.company.desc}</td>
-                                            <td>\${message.data.localTime}</td>
-                                            <td>\${message.data.remoteTime}</td>
-                                            <td>
-                                                <div class="btn-group" role="group">
-                                                    <button class="btn btn-danger btn-sm btn-company-remove" data-company-code="\${message.data.company.cc}">
-                                                        <i class="fas fa-trash-alt"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>\`;
-
-                                    $('.table-company-library tbody').append(row);
+                                    $('.table-company-library tbody').append(buildRow(message.data));
                                     $("#companyCodeAddModal").modal('hide');
                                     $('#input-company-code').val('');
+                                    persistOrder();
                                     showToast(message.msg, message.status);
                                 } else {
                                     showToast(message.msg, message.status);
@@ -605,18 +1005,14 @@ function getHtmlForWebview(CompanyLibraries: any) {
                                 break;
                             case 'remove_company':
                                 $("tr.company-"+message.data).remove();
+                                persistOrder();
                                 showToast(message.msg, message.status);
                                 break;
-                            case 'reorder_company':
-                                if (message.data.dir == "up") {
-                                    var selectedRow = $('.table-company-library tr.table-active');
-                                    selectedRow.prev().before(selectedRow);
-                                    updateButtonStates();
-                                } else {
-                                    var selectedRow = $('.table-company-library tr.table-active');
-                                    selectedRow.next().after(selectedRow);
-                                    updateButtonStates();
+                            case 'refresh_all':
+                                if (Array.isArray(message.data)) {
+                                    renderTable(message.data);
                                 }
+                                showToast(message.msg, message.status);
                                 break;
                         }
                     });
@@ -647,21 +1043,25 @@ function getHtmlForWebview(CompanyLibraries: any) {
                     });
 
                     $('#btn-up').click(function() {
-                        var companyCode = $('.table-company-library tr.table-active').data('company-code');
-                        vscode.postMessage({
-                            command: 'reorder_company',
-                            companyCode,
-                            dir: 'up'
-                        });
+                        var selectedRow = $('.table-company-library tr.table-active');
+                        selectedRow.prev().before(selectedRow);
+                        persistOrder();
+                        updateButtonStates();
                     });
 
                     $('#btn-down').click(function() {
-                        var companyCode = $('.table-company-library tr.table-active').data('company-code');
-                        vscode.postMessage({
-                            command: 'reorder_company',
-                            companyCode,
-                            dir: 'down'
-                        });
+                        var selectedRow = $('.table-company-library tr.table-active');
+                        selectedRow.next().after(selectedRow);
+                        persistOrder();
+                        updateButtonStates();
+                    });
+
+                    $('#btn-refresh-remote').click(function() {
+                        vscode.postMessage({ command: 'refresh_remote' });
+                    });
+
+                    $('#btn-download-updates').click(function() {
+                        vscode.postMessage({ command: 'download_updates' });
                     });
 
                     function updateButtonStates() {
