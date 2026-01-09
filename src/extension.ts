@@ -534,88 +534,104 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
 
-   const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
-    ['plaintext', 'bbj'],
-    {
-        provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
-            const linePrefix = document.lineAt(position).text.substring(0, position.character);
-            if (!linePrefix.endsWith('call ')) {
-                return undefined;
-            }
-
-            const programs = getProgramNames(companyList);
-            if (!programs) {
-                return undefined;
-            }
-
-            const items: vscode.CompletionItem[] = [];
-
-            // Helper to build insertion text (handles ::label case)
-            const buildInsertText = (programName: string, argsOpt: string): string => {
-                let cleanedArgsText = String(argsOpt || '').trim();
-
-                // Remove leading comma
-                if (cleanedArgsText.startsWith(',')) {
-                    cleanedArgsText = cleanedArgsText.substring(1);
+    const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
+        ['plaintext', 'bbj'],
+        {
+            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                if (!linePrefix.endsWith('call ')) {
+                    return undefined;
                 }
 
-                const argsArray = cleanedArgsText.length
-                    ? cleanedArgsText.split(',').map(a => a.trim())
-                    : [];
+                const programs = getProgramNames(companyList);
+                if (!programs) {
+                    return undefined;
+                }
 
-                let finalProgramName = programName;
-                let finalArgs = argsArray;
+                const items: vscode.CompletionItem[] = [];
 
-                // Fold ::label into program name
-                if (argsArray.length > 0 && argsArray[0].startsWith('::')) {
-                    let label = argsArray[0];
-                    if (label.endsWith('"')) {
-                        label = label.substring(0, label.length - 1);
+                // Helper to build insertion text (handles ::label case)
+                const buildInsertText = (programName: string, argsOpt: string): string => {
+                    let cleanedArgsText = String(argsOpt || '').trim();
+
+                    // Remove leading comma
+                    if (cleanedArgsText.startsWith(',')) {
+                        cleanedArgsText = cleanedArgsText.substring(1);
                     }
-                    finalProgramName = programName + label;
-                    finalArgs = argsArray.slice(1);
+
+                    const argsArray = cleanedArgsText.length
+                        ? cleanedArgsText.split(',').map(a => a.trim())
+                        : [];
+
+                    let finalProgramName = programName;
+                    let finalArgs = argsArray;
+
+                    // Fold ::label into program name
+                    if (argsArray.length > 0 && argsArray[0].startsWith('::')) {
+                        let label = argsArray[0];
+                        if (label.endsWith('"')) {
+                            label = label.substring(0, label.length - 1);
+                        }
+                        finalProgramName = programName + label;
+                        finalArgs = argsArray.slice(1);
+                    }
+
+                    if (finalArgs.length > 0) {
+                        return `"${finalProgramName}", ${finalArgs.join(', ')}`;
+                    } else {
+                        return `"${finalProgramName}"`;
+                    }
+                };
+
+                for (const elem of programs) {
+                    const argsOptions: any[] = (getProgramArgs(companyList, elem.pgm) as any) || [];
+
+                    // No args → single item
+                    if (argsOptions.length === 0) {
+                        const item = new vscode.CompletionItem(elem.pgm, vscode.CompletionItemKind.Function);
+                        item.detail = elem.title || '';
+                        item.insertText = `"${elem.pgm}"`;
+                        item.filterText = `${elem.pgm} ${elem.title || ''}`;
+                        items.push(item);
+                        continue;
+                    }
+
+                    // Multiple arg options → Option 1, Option 2, ...
+                    argsOptions.forEach((opt, idx) => {
+                        // Build a display-friendly argument string (no leading comma)
+                        const rawArgs = String(opt || '').trim().replace(/^,/, '').trim();
+                        const displayArgs = rawArgs
+                            ? rawArgs
+                                .split(',')
+                                .map(a => a.trim().replace(/"$/, ''))
+                                .join(', ')
+                            : '';
+
+                        const item = new vscode.CompletionItem(
+                            elem.pgm,
+                            vscode.CompletionItemKind.Function
+                        );
+
+                        // Rich popup label: program name + args
+                        (item as any).label = {
+                            label: `${elem.pgm} (Option ${idx + 1})`,
+                            description: displayArgs
+                        };
+
+                        item.detail = elem.title || '';
+                        item.filterText = `${elem.pgm} ${elem.title || ''} ${displayArgs}`;
+                        item.insertText = buildInsertText(elem.pgm, String(opt));
+
+                        items.push(item);
+
+                    });
                 }
 
-                if (finalArgs.length > 0) {
-                    return `"${finalProgramName}", ${finalArgs.join(', ')}`;
-                } else {
-                    return `"${finalProgramName}"`;
-                }
-            };
-
-            for (const elem of programs) {
-                const argsOptions: any[] = (getProgramArgs(companyList, elem.pgm) as any) || [];
-
-                // No args → single item
-                if (argsOptions.length === 0) {
-                    const item = new vscode.CompletionItem(elem.pgm, vscode.CompletionItemKind.Function);
-                    item.detail = elem.title || '';
-                    item.insertText = `"${elem.pgm}"`;
-                    item.filterText = `${elem.pgm} ${elem.title || ''}`;
-                    items.push(item);
-                    continue;
-                }
-
-                // Multiple arg options → Option 1, Option 2, ...
-                argsOptions.forEach((opt, idx) => {
-                    const item = new vscode.CompletionItem(
-                        `${elem.pgm} (Option ${idx + 1})`,
-                        vscode.CompletionItemKind.Function
-                    );
-
-                    item.detail = elem.title || '';
-                    item.filterText = `${elem.pgm} ${elem.title || ''}`;
-                    item.insertText = buildInsertText(elem.pgm, String(opt));
-
-                    items.push(item);
-                });
+                return items;
             }
-
-            return items;
-        }
-    },
-    ' '
-);
+        },
+        ' '
+    );
 
 
     const checkProgramArgProvider = vscode.languages.registerCompletionItemProvider(
