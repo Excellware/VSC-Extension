@@ -614,7 +614,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                         // Rich popup label: program name + args
                         (item as any).label = {
-                            label: `${elem.pgm} (Option ${idx + 1})`,
+                            label: elem.pgm,
                             description: displayArgs
                         };
 
