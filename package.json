@@ -6,7 +6,7 @@
     "name": "Excellware, Inc."
   },
   "description": "A Visual Studio Code extension for Dynamo Tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "icon": "images/toolsTransparent128x128.png",
   "repository": {
     "type": "git",
