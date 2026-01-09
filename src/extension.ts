@@ -65,7 +65,7 @@ function getProgramNames(companyList: any) {
             });
         }
     }
-    
+
     return programs;
 }
 
@@ -142,8 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
         return entry;
     }
 
-    async function refreshRemoteTimestamps(): Promise<{ success: boolean; msg: string; updated?: any[] }>
-    {
+    async function refreshRemoteTimestamps(): Promise<{ success: boolean; msg: string; updated?: any[] }> {
         companyList = (context.globalState.get('CompanyLibraries') as any[]) || [];
         companyList = companyList.map(normalizeCompanyEntry);
 
@@ -170,8 +169,7 @@ export function activate(context: vscode.ExtensionContext) {
         return { success: true, msg: 'Remote timestamps refreshed.', updated: companyList };
     }
 
-    async function downloadUpdates(force = false): Promise<{ success: boolean; msg: string; updated?: any[] }>
-    {
+    async function downloadUpdates(force = false): Promise<{ success: boolean; msg: string; updated?: any[] }> {
         // Always refresh remote timestamps first so we can compare.
         const refreshed = await refreshRemoteTimestamps();
         if (!refreshed.success) return refreshed;
@@ -536,78 +534,89 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
 
-    const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
-        ['plaintext', 'bbj'],
-        {
-            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
-                // Check if the user has typed "new "
-                const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                if (!linePrefix.endsWith('call ')) {
-                    return undefined;
+   const checkProgramNameProvider = vscode.languages.registerCompletionItemProvider(
+    ['plaintext', 'bbj'],
+    {
+        provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+            const linePrefix = document.lineAt(position).text.substring(0, position.character);
+            if (!linePrefix.endsWith('call ')) {
+                return undefined;
+            }
+
+            const programs = getProgramNames(companyList);
+            if (!programs) {
+                return undefined;
+            }
+
+            const items: vscode.CompletionItem[] = [];
+
+            // Helper to build insertion text (handles ::label case)
+            const buildInsertText = (programName: string, argsOpt: string): string => {
+                let cleanedArgsText = String(argsOpt || '').trim();
+
+                // Remove leading comma
+                if (cleanedArgsText.startsWith(',')) {
+                    cleanedArgsText = cleanedArgsText.substring(1);
                 }
-                
-                const programs = getProgramNames(companyList);
-                if (!programs) {
-                    return undefined;
-                }
-                // Suggest callable programs after: call
-                // Show description alongside the program name and make the description searchable.
-                // Automatically include argument lists in the completion insert text.
-                // If there are multiple argument options (overloads), show multiple entries (Option 1, Option 2, ...).
-                const items: vscode.CompletionItem[] = [];
 
-                const normalizeArgs = (opt: any): string => {
-                    if (opt === undefined || opt === null) return '';
-                    const raw = String(opt).trim().replace(/^,/, '').trim();
-                    if (!raw) return '';
+                const argsArray = cleanedArgsText.length
+                    ? cleanedArgsText.split(',').map(a => a.trim())
+                    : [];
 
-                    // Ensure there is a space after each comma in the argument list.
-                    // Example: "A,B, C" -> "A, B, C"
-                    return raw
-                        .split(',')
-                        .map(part => part.trim())
-                        .filter(part => part.length > 0)
-                        .join(', ');
-                };
+                let finalProgramName = programName;
+                let finalArgs = argsArray;
 
-                for (const elem of programs) {
-                    const argsOptions: any[] = (getProgramArgs(companyList, elem.pgm) as any) || [];
-
-                    const addItem = (optionSuffix: string | undefined, argsOpt: any) => {
-                        const argsText = normalizeArgs(argsOpt);
-                        const label: vscode.CompletionItemLabel = {
-                            label: elem.pgm,
-                            description: optionSuffix ? `${elem.title} ${optionSuffix}` : elem.title
-                        };
-
-                        const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Function);
-
-                        // Display a fuller description in the details pane.
-                        item.detail = `${elem.title}`;
-
-                        // Make the description (and args) searchable in the completion list.
-                        item.filterText = `${elem.pgm} ${elem.title} ${argsText}`;
-
-                        // Insert text when the item is selected.
-                        // This removes the need to invoke Ctrl+Shift+Space just to get the argument list.
-                        item.insertText = argsText.length > 0 ? `"${elem.pgm}", ${argsText}` : `"${elem.pgm}"`;
-                        items.push(item);
-                    };
-
-                    if (argsOptions.length > 1) {
-                        argsOptions.forEach((opt, idx) => addItem(`(Option ${idx + 1})`, opt));
-                    } else if (argsOptions.length === 1) {
-                        addItem(undefined, argsOptions[0]);
-                    } else {
-                        addItem(undefined, '');
+                // Fold ::label into program name
+                if (argsArray.length > 0 && argsArray[0].startsWith('::')) {
+                    let label = argsArray[0];
+                    if (label.endsWith('"')) {
+                        label = label.substring(0, label.length - 1);
                     }
+                    finalProgramName = programName + label;
+                    finalArgs = argsArray.slice(1);
                 }
 
-                return items;
-            },
-        },
-        ' '
-    );
+                if (finalArgs.length > 0) {
+                    return `"${finalProgramName}", ${finalArgs.join(', ')}`;
+                } else {
+                    return `"${finalProgramName}"`;
+                }
+            };
+
+            for (const elem of programs) {
+                const argsOptions: any[] = (getProgramArgs(companyList, elem.pgm) as any) || [];
+
+                // No args → single item
+                if (argsOptions.length === 0) {
+                    const item = new vscode.CompletionItem(elem.pgm, vscode.CompletionItemKind.Function);
+                    item.detail = elem.title || '';
+                    item.insertText = `"${elem.pgm}"`;
+                    item.filterText = `${elem.pgm} ${elem.title || ''}`;
+                    items.push(item);
+                    continue;
+                }
+
+                // Multiple arg options → Option 1, Option 2, ...
+                argsOptions.forEach((opt, idx) => {
+                    const item = new vscode.CompletionItem(
+                        `${elem.pgm} (Option ${idx + 1})`,
+                        vscode.CompletionItemKind.Function
+                    );
+
+                    item.detail = elem.title || '';
+                    item.filterText = `${elem.pgm} ${elem.title || ''}`;
+                    item.insertText = buildInsertText(elem.pgm, String(opt));
+
+                    items.push(item);
+                });
+            }
+
+            return items;
+        }
+    },
+    ' '
+);
+
 
     const checkProgramArgProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
@@ -750,7 +759,7 @@ export function activate(context: vscode.ExtensionContext) {
                     item.detail = sig;
 
                     // Insert just the method call (dot already typed)
-		    item.insertText = afterDot;
+                    item.insertText = afterDot;
                     return item;
                 });
             }
@@ -758,7 +767,7 @@ export function activate(context: vscode.ExtensionContext) {
         '.'
     );
 
-const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvider(
+    const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
@@ -779,16 +788,16 @@ const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvid
                 for (let i = 0, sortIndex = 0; i < fields.length; i++) {
                     const field = fields[i];
                     const [name, type, description] = field.split(':');
-                    
+
                     const params = name.match(/(\w+)\$?(\[(\d+)\])?/);
                     const param1 = params[1];
                     const param2 = params[3];
                     const methodName = (type[0].toUpperCase() === 'C' || type[0].toUpperCase() === 'O') ? 'getFieldAsString' : 'getFieldAsNumber';
-                    
+
                     let item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
                     item.sortText = `${sortIndex}`;
                     sortIndex++;
-                    item.label = `${methodName}("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', '+param2 : ''})`;
+                    item.label = `${methodName}("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', ' + param2 : ''})`;
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
                     items.push(item);
 
@@ -796,7 +805,7 @@ const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvid
                     item.sortText = `${sortIndex}`;
                     sortIndex++;
 
-                    item.label = `setFieldValue("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', '+param2 : ''}, ${(type[0].toUpperCase() === 'C' || type[0].toUpperCase() === 'O') ? 'value$' : (type[0].toUpperCase() === 'U' || type[0].toUpperCase() === 'I') ? 'value%' : 'value'})`;
+                    item.label = `setFieldValue("${ddname === ddname.toUpperCase() ? param1.toUpperCase() : param1.toLowerCase()}"${param2 ? ', ' + param2 : ''}, ${(type[0].toUpperCase() === 'C' || type[0].toUpperCase() === 'O') ? 'value$' : (type[0].toUpperCase() === 'U' || type[0].toUpperCase() === 'I') ? 'value%' : 'value'})`;
 
                     item.detail = `${description} ${type}`; // Type displayed in the detail property
 
@@ -845,15 +854,15 @@ const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvid
                 if (!lastWordMatch) {
                     return undefined;
                 }
-                
+
                 const constructors = getConstructors(companyList, lastWordMatch[1]);
 
-                return  constructors.map((elem: any) => {
+                return constructors.map((elem: any) => {
                     const item = new vscode.CompletionItem(elem, vscode.CompletionItemKind.Field);
                     // Replace the trailing space with the selected item
                     const range = new vscode.Range(
-                        new vscode.Position(position.line, linePrefix.length-1),
-                        new vscode.Position(position.line, linePrefix.length-1)
+                        new vscode.Position(position.line, linePrefix.length - 1),
+                        new vscode.Position(position.line, linePrefix.length - 1)
                     );
                     item.range = range;
                     return item;
@@ -867,17 +876,17 @@ const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvid
     );
 
     context.subscriptions.push(
-        disposable, 
+        disposable,
         disposableOpen,
         disposableCheck,
         disposableDownload,
-        labelProvider, 
-        checkProgramNameProvider, 
-        checkProgramArgProvider, 
+        labelProvider,
+        checkProgramNameProvider,
+        checkProgramArgProvider,
         callableSignatureProvider,
         dataProvider,
         bbjTemplatedStringProvider,
-        classProvider, 
+        classProvider,
         constructorProvider
     );
 }
