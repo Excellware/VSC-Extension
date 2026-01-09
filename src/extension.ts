@@ -750,14 +750,7 @@ export function activate(context: vscode.ExtensionContext) {
                     item.detail = sig;
 
                     // Insert just the method call (dot already typed)
-                    const argSnippet = buildArgSnippetFromSignature(sig);
-                    const snippet = new vscode.SnippetString();
-                    snippet.appendText(methodName);
-                    snippet.appendText('(');
-                    snippet.appendSnippet(argSnippet);
-                    snippet.appendText(')');
-                    item.insertText = snippet;
-
+		    item.insertText = afterDot;
                     return item;
                 });
             }
