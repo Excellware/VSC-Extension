@@ -422,11 +422,26 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!programs) {
                     return undefined;
                 }
-                // Return specific suggestions for "new "
+                // Suggest callable programs after: call
+                // Show description alongside the program name and make the description searchable.
                 return programs.map((elem: any) => {
-                    const item = new vscode.CompletionItem(elem.pgm, vscode.CompletionItemKind.Field);
-                    item.detail = `${elem.title}`; // Type displayed in the detail property
-                    item.insertText = `"${elem.pgm}"`; // Insert text when the item is selected
+                    // VS Code will render the `description` on the right side of the completion list.
+                    const label: vscode.CompletionItemLabel = {
+                        label: elem.pgm,
+                        description: elem.title
+                    };
+
+                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Function);
+
+                    // Display a fuller description in the details pane.
+                    item.detail = `${elem.title}`;
+
+                    // Make the description searchable in the completion list.
+                    // (VS Code filters primarily on `label` / `filterText`.)
+                    item.filterText = `${elem.pgm} ${elem.title}`;
+
+                    // Insert text when the item is selected.
+                    item.insertText = `"${elem.pgm}"`;
                     return item;
                 });
             },
