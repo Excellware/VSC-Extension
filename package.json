@@ -4,7 +4,7 @@
   "publisher": "excellware",
   "author": { "name": "Excellware Inc" },
   "description": "A Visual Studio Code extension for Dynamo Tools",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "publisher": "excellware",
   "author": {
     "name": "Excellware, Inc."
@@ -35,7 +35,8 @@
     "Excellware"
   ],
   "activationEvents": [
-    "*"
+    "onLanguage:bbj",
+    "onLanguage:plaintext"
   ],
   "main": "./out/extension.js",
   "contributes": {

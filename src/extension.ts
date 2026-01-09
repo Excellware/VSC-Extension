@@ -762,6 +762,61 @@ export function activate(context: vscode.ExtensionContext) {
                     return undefined;
                 }
 
+                // 3) BBj Templated String Object completion: ddname!.
+                const templatedMatch = linePrefix.match(/(\w+)!\.$/);
+                if (templatedMatch) {
+                    const ddNameTyped = templatedMatch[1];
+                    const ddNameLookup = ddNameTyped.toUpperCase();
+                    const fields = getFieldsByDdname(companyList, ddNameLookup);
+                    if (!fields || fields.length === 0) {
+                        return undefined;
+                    }
+
+                    const items: vscode.CompletionItem[] = [];
+                    const upper = ddNameTyped === ddNameTyped.toUpperCase();
+
+                    for (const field of fields) {
+                        const [rawName] = field.split(':');
+
+                        const arrayMatch = rawName.match(/\[(\d+)\]/);
+                        const maxIndex = arrayMatch ? arrayMatch[1] : undefined;
+
+                        const nameNoArray = rawName.replace(/\[.*\]/, '');
+                        const isString = nameNoArray.endsWith('$');
+                        const isInteger = nameNoArray.endsWith('%');
+
+                        const baseName = nameNoArray.replace(/[$%]$/, '');
+                        const fieldName = upper ? baseName.toUpperCase() : baseName.toLowerCase();
+
+                        const getterName = isString ? 'getFieldAsString' : 'getFieldAsNumber';
+                        const valuePlaceholder = isString
+                            ? 'string$'
+                            : isInteger
+                                ? 'integer%'
+                                : 'number';
+
+                        // Getter
+                        const getter = new vscode.CompletionItem(
+                            `${getterName}("${fieldName}"${maxIndex ? ', ' + maxIndex : ''})`,
+                            vscode.CompletionItemKind.Method
+                        );
+                        getter.insertText =
+                            `${ddNameTyped}!.${getterName}("${fieldName}"${maxIndex ? ', ' + maxIndex : ''})`;
+                        items.push(getter);
+
+                        // Setter
+                        const setter = new vscode.CompletionItem(
+                            `setFieldValue("${fieldName}"${maxIndex ? ', ' + maxIndex : ''}, ${valuePlaceholder})`,
+                            vscode.CompletionItemKind.Method
+                        );
+                        setter.insertText =
+                            `${ddNameTyped}!.setFieldValue("${fieldName}"${maxIndex ? ', ' + maxIndex : ''}, ${valuePlaceholder})`;
+                        items.push(setter);
+                    }
+
+                    return items;
+                }
+
                 return staticSigs.map((sig: string) => {
                     // Example sig: "DT.appendQueryString(BBjString query$, Map map!, Boolean urlEncode!)"
                     const afterDot = sig.substring((qualifier + '.').length);
