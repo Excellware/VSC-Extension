@@ -183,7 +183,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         const panel = vscode.window.createWebviewPanel(
             'dataTable',  // Identifies the type of the webview used
-            'Company libraries', // Title of the panel displayed to the user
+            'Company Libraries', // Title of the panel displayed to the user
             vscode.ViewColumn.One, // Editor column to show the new webview panel in.
             { enableScripts: true } // Webview options.
         );
@@ -640,7 +640,7 @@ function getHtmlForWebview(CompanyLibraries: any) {
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
             <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-            <title>Company libraries</title>
+            <title>Company Libraries</title>
             <style>
                 #toast {
                     visibility: hidden;
@@ -738,6 +738,21 @@ function getHtmlForWebview(CompanyLibraries: any) {
 
                 $(function () {
                     const vscode = acquireVsCodeApi();
+
+                    // UX polish: when the Add modal opens, focus the Company Code input
+                    // and allow Enter to submit (same as clicking OK).
+                    $('#companyCodeAddModal').on('shown.bs.modal', function () {
+                        const $input = $('#input-company-code');
+                        $input.trigger('focus');
+                        $input.select();
+                    });
+
+                    $('#input-company-code').on('keydown', function (e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            $('#btn-company-load').trigger('click');
+                        }
+                    });
 
                     function buildRow(company) {
                         const cc = company.company.cc;
