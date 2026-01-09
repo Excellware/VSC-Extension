@@ -18,7 +18,7 @@
   "bugs": {
     "url": "https://github.com/Excellware/VSC-Extension/issues"
   },
-  "license": "MIT"
+  "license": "MIT",
   "engines": {
     "vscode": "^1.90.0"
   },
