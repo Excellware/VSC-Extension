@@ -1,0 +1,143 @@
+From dfa88a2c0007db2b4f00959a6f6c84349b4527b0 Mon Sep 17 00:00:00 2001
+From: test <test@example.com>
+Date: Fri, 9 Jan 2026 02:23:25 +0000
+Subject: [PATCH] Static method completion after Class.
+
+---
+ src/extension.ts | 106 +++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 106 insertions(+)
+
+diff --git a/src/extension.ts b/src/extension.ts
+index 8ce0f8c..afcbbd0 100644
+--- a/src/extension.ts
++++ b/src/extension.ts
+@@ -68,6 +68,36 @@ function getConstructors(companyList: any, classname: any) {
+     return [];
+ }
+ 
++function getStaticMethods(companyList: any, className: string): string[] {
++    // Company libraries may expose static methods under different key names.
++    // Each entry is expected to look like: "DT.appendQueryString(BBjString query$, Map map!)" or "DT.SP()".
++    const out: string[] = [];
++    const keys = ['staticmethods', 'staticMethods', 'static_methods', 'static_methods_list'];
++
++    for (const elem of companyList) {
++        const company = elem?.company;
++        if (!company) continue;
++
++        let list: any[] | undefined;
++        for (const k of keys) {
++            if (Array.isArray((company as any)[k])) {
++                list = (company as any)[k];
++                break;
++            }
++        }
++        if (!list) continue;
++
++        for (const raw of list) {
++            const s = String(raw || '').trim();
++            if (!s) continue;
++            if (!s.startsWith(className + '.')) continue;
++            out.push(s);
++        }
++    }
++
++    return out;
++}
++
+ // This method is called when your extension is activated
+ // Your extension is activated the very first time the command is executed
+ export function activate(context: vscode.ExtensionContext) {
+@@ -591,6 +621,81 @@ export function activate(context: vscode.ExtensionContext) {
+         },
+     );
+ 
++    const staticMethodProvider = vscode.languages.registerCompletionItemProvider(
++        ['plaintext', 'bbj'],
++        {
++            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
++                // Offer static method completion after: ClassName.
++                // Must not conflict with DDName.field completion; DDNames should not be class names,
++                // but we also short-circuit if the token looks like a DDName.
++                const linePrefix = document.lineAt(position).text.substring(0, position.character);
++                const m = linePrefix.match(/(\w+)\.$/);
++                if (!m) return undefined;
++
++                const qualifier = m[1];
++
++                // If this token matches a data dictionary name, let the DD field provider handle it.
++                const ddFields = getFieldsByDdname(companyList, qualifier.toUpperCase());
++                if (ddFields && ddFields.length > 0) {
++                    return undefined;
++                }
++
++                const sigs = getStaticMethods(companyList, qualifier);
++                if (!sigs || sigs.length === 0) {
++                    return undefined;
++                }
++
++                const items: vscode.CompletionItem[] = [];
++
++                const parseSignature = (full: string) => {
++                    // full like: "DT.appendQueryString(BBjString query$, Map map!, Boolean urlEncode!)"
++                    const afterDot = full.substring(qualifier.length + 1);
++                    const open = afterDot.indexOf('(');
++                    const close = afterDot.lastIndexOf(')');
++                    const methodName = open >= 0 ? afterDot.substring(0, open) : afterDot;
++                    const argsPart = open >= 0 && close > open ? afterDot.substring(open + 1, close) : '';
++                    return { methodName, argsPart, afterDot };
++                };
++
++                const makeSnippet = (methodName: string, argsPart: string) => {
++                    const args = argsPart
++                        .split(',')
++                        .map(s => s.trim())
++                        .filter(Boolean);
++                    if (args.length === 0) {
++                        return new vscode.SnippetString(`${methodName}()`);
++                    }
++                    // Use the last token as a friendly parameter name.
++                    const placeholders = args.map((a, i) => {
++                        const tokens = a.split(/\s+/).filter(Boolean);
++                        const name = tokens.length ? tokens[tokens.length - 1] : `arg${i + 1}`;
++                        // Strip trailing punctuation that appears in BBj variable names (keep $ and !).
++                        const clean = name.replace(/[\)\(]/g, '');
++                        return `\${${i + 1}:${clean}}`;
++                    });
++                    return new vscode.SnippetString(`${methodName}(${placeholders.join(', ')})`);
++                };
++
++                // Keep display stable and searchable by method name.
++                for (const full of sigs) {
++                    const { methodName, argsPart } = parseSignature(full);
++                    const label: vscode.CompletionItemLabel = {
++                        label: methodName,
++                        description: `(${argsPart})`
++                    };
++                    const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Method);
++                    item.detail = `${qualifier}.${methodName}(${argsPart})`;
++                    item.filterText = methodName;
++                    item.insertText = makeSnippet(methodName, argsPart);
++                    items.push(item);
++                }
++
++                return items;
++            }
++        },
++        '.'
++    );
++
+     const dataProvider = vscode.languages.registerCompletionItemProvider(
+         ['plaintext', 'bbj'],
+         {
+@@ -753,6 +858,7 @@ export function activate(context: vscode.ExtensionContext) {
+         labelProvider, 
+         checkProgramNameProvider, 
+         checkProgramArgProvider, 
++        staticMethodProvider,
+         dataProvider,
+         bbjTemplatedStringProvider,
+         classProvider, 
+-- 
+2.39.5
+

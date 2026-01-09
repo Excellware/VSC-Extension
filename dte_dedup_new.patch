@@ -1,0 +1,43 @@
+From 281bf7e7ad69a88b70877c3ea67d3cc33c43b87c Mon Sep 17 00:00:00 2001
+From: Dev <dev@example.com>
+Date: Fri, 9 Jan 2026 00:42:56 +0000
+Subject: [PATCH] Deduplicate class completion items after new
+
+---
+ src/extension.ts | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/src/extension.ts b/src/extension.ts
+index 59d20a4..b678c88 100644
+--- a/src/extension.ts
++++ b/src/extension.ts
+@@ -38,12 +38,22 @@ function getProgramArgs(companyList: any, pgm: any) {
+ }
+ 
+ function getClasses(companyList: any) {
+-    let classes: any = [];
++    // Company libraries can overlap; avoid showing duplicate class names (e.g. after typing `new `).
++    // Preserve the configured company search order by keeping the first occurrence.
++    const seen = new Set<string>();
++    const classes: any[] = [];
++
+     for (const elem of companyList) {
+-        classes = classes.concat(elem.company.classes);
+-        // return elem.company.classes.map((e: any) => e.classname);
++        const list = elem?.company?.classes || [];
++        for (const c of list) {
++            const name = c?.classname;
++            if (!name) continue;
++            if (seen.has(name)) continue;
++            seen.add(name);
++            classes.push(c);
++        }
+     }
+-    
++
+     return classes;
+ }
+ 
+-- 
+2.39.5
+

@@ -1,0 +1,38 @@
+--- a/src/extension.ts
++++ b/src/extension.ts
+@@ -749,14 +749,10 @@
+                     (item as any).label = { label: methodName, description: paramsText };
+
+                     item.detail = sig;
+
+ 
+
+-                    // Insert just the method call (dot already typed)
+
+-                    const argSnippet = buildArgSnippetFromSignature(sig);
+
+-                    const snippet = new vscode.SnippetString();
+
+-                    snippet.appendText(methodName);
+
+-                    snippet.appendText('(');
+
+-                    snippet.appendSnippet(argSnippet);
+
+-                    snippet.appendText(')');
+
+-                    item.insertText = snippet;
+
++                    // Insert the full signature as displayed (dot already typed)
+
++                    // Example insert: "appendQueryString(BBjString query$, Map map!, Boolean urlEncode!)"
+
++                    item.insertText = afterDot;
+
++
+
+ 
+
+                     return item;
+
+                 });
