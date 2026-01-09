@@ -5,7 +5,15 @@ All notable changes to the Dynamo Tools VS Code Extension will be documented in 
 This project follows a pragmatic versioning approach aligned with feature delivery and Marketplace releases.
 
 ---
-## [0.1.0] – Added support for BBjTemplatedString Objects
+## [0.1.2] – Added support for alternate Data Dictionary Name
+
+### Added
+- New Feature
+  - if CM01A does not exist in the Data Dictionary, then the fields in CM01 will be used.
+  - That enables you to use CM01 and CM01A or (cm01 and cm01a) for code completion
+  - Works both for String Templates and BBjTemplatedString Objects
+
+## [0.1.1] – Added support for BBjTemplatedString Objects
 
 ### Added
 - New Feature

@@ -12,6 +12,33 @@ function getFieldsByDdname(companyList: any, ddname: any) {
     return null;
 }
 
+// Resolve DDNAME with fallback for secondary structures.
+// Rule:
+// 1) Try exactly what the user typed
+// 2) If not found and name ends with A/a, try base name
+function resolveDdName(
+    companyList: any,
+    typedName: string
+): { lookupName: string; typedName: string } | undefined {
+
+    const upper = typedName.toUpperCase();
+
+    // 1) Exact match
+    if (getFieldsByDdname(companyList, upper)) {
+        return { lookupName: upper, typedName };
+    }
+
+    // 2) Fallback: typed name ends with A/a -> try base name
+    if (upper.endsWith('A')) {
+        const base = upper.slice(0, -1);
+        if (getFieldsByDdname(companyList, base)) {
+            return { lookupName: base, typedName };
+        }
+    }
+
+    return undefined;
+}
+
 function getStaticMethodsByClass(companyList: any, className: string): string[] {
     const out: string[] = [];
     const seen = new Set<string>();
@@ -728,7 +755,10 @@ export function activate(context: vscode.ExtensionContext) {
                 const qualifier = lastWordMatch[1];
 
                 // 1) DDName.field completion (case-insensitive DDName; field case matches typed DDName)
-                const fields = getFieldsByDdname(companyList, qualifier.toUpperCase());
+                const resolvedDd = resolveDdName(companyList, qualifier);
+                const fields = resolvedDd
+                    ? getFieldsByDdname(companyList, resolvedDd.lookupName)
+                    : null;
                 if (fields && fields.length > 0) {
                     return fields.map((field: any) => {
                         const [name, type, description] = field.split(':');
@@ -766,8 +796,11 @@ export function activate(context: vscode.ExtensionContext) {
                 const templatedMatch = linePrefix.match(/(\w+)!\.$/);
                 if (templatedMatch) {
                     const ddNameTyped = templatedMatch[1];
-                    const ddNameLookup = ddNameTyped.toUpperCase();
-                    const fields = getFieldsByDdname(companyList, ddNameLookup);
+                    const resolved = resolveDdName(companyList, ddNameTyped);
+                    const fields = resolved
+                        ? getFieldsByDdname(companyList, resolved.lookupName)
+                        : null;
+
                     if (!fields || fields.length === 0) {
                         return undefined;
                     }
