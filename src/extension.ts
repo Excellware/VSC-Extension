@@ -9,7 +9,49 @@ function getFieldsByDdname(companyList: any, ddname: any) {
             }
         }
     }
-    return [];
+    return null;
+}
+
+function getStaticMethodsByClass(companyList: any, className: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const elem of companyList) {
+        const list: any[] = elem?.company?.staticmethods || [];
+        for (const sig of list) {
+            if (typeof sig !== 'string') continue;
+            if (!sig.startsWith(className + '.')) continue;
+            if (seen.has(sig)) continue;
+            seen.add(sig);
+            out.push(sig);
+        }
+    }
+    return out;
+}
+
+function buildArgSnippetFromSignature(signature: string): vscode.SnippetString {
+    // signature example: "DT.addS(BBjNumber count, BBjString word$)"
+    const parenOpen = signature.indexOf('(');
+    const parenClose = signature.lastIndexOf(')');
+    if (parenOpen < 0 || parenClose < parenOpen) {
+        return new vscode.SnippetString('');
+    }
+    const inside = signature.substring(parenOpen + 1, parenClose).trim();
+    if (!inside) return new vscode.SnippetString('');
+
+    // Split on commas at top-level (signatures here are simple, no generics).
+    const parts = inside.split(',').map(s => s.trim()).filter(Boolean);
+    const names: string[] = [];
+    for (const p of parts) {
+        // Parameter is typically: "Type name" where name may end with $ or !
+        const m = p.match(/\b([A-Za-z_][A-Za-z0-9_]*[\$!%]?)\s*$/);
+        names.push(m ? m[1] : p);
+    }
+    const snippet = new vscode.SnippetString();
+    names.forEach((n, i) => {
+        if (i > 0) snippet.appendText(', ');
+        snippet.appendPlaceholder(n);
+    });
+    return snippet;
 }
 
 function getProgramNames(companyList: any) {
@@ -658,34 +700,64 @@ export function activate(context: vscode.ExtensionContext) {
                     return undefined;
                 }
 
-                const ddname = lastWordMatch[1];
-                const fields = getFieldsByDdname(companyList, lastWordMatch[1].toUpperCase());
+                const qualifier = lastWordMatch[1];
 
-                if (!fields) {
+                // 1) DDName.field completion (case-insensitive DDName; field case matches typed DDName)
+                const fields = getFieldsByDdname(companyList, qualifier.toUpperCase());
+                if (fields && fields.length > 0) {
+                    return fields.map((field: any) => {
+                        const [name, type, description] = field.split(':');
+                        const item = new vscode.CompletionItem('', vscode.CompletionItemKind.Field);
+
+                        const params = name.match(/(\w+)\$?(\[(\d+)\])?/);
+
+                        if (type[0].toUpperCase() === 'U') {
+                            if (qualifier === qualifier.toUpperCase()) {
+                                item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toUpperCase();
+                            } else {
+                                item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toLowerCase();
+                            }
+                        } else {
+                            if (qualifier === qualifier.toUpperCase()) {
+                                item.label = `${name.toUpperCase()}`;
+                            } else {
+                                item.label = `${name.toLowerCase()}`;
+                            }
+                        }
+
+                        item.detail = `${description} ${type}`;
+                        return item;
+                    });
+                }
+
+                // 2) Static method completion: ClassName.staticMethod(...)
+                // Class and method names are case-sensitive; match the qualifier exactly.
+                const staticSigs = getStaticMethodsByClass(companyList, qualifier);
+                if (!staticSigs || staticSigs.length === 0) {
                     return undefined;
                 }
-                
-                return fields.map((field: any) => {
-                    const [name, type, description] = field.split(':');
-                    const item = new vscode.CompletionItem("", vscode.CompletionItemKind.Field);
 
-                    const params = name.match(/(\w+)\$?(\[(\d+)\])?/);
+                return staticSigs.map((sig: string) => {
+                    // Example sig: "DT.appendQueryString(BBjString query$, Map map!, Boolean urlEncode!)"
+                    const afterDot = sig.substring((qualifier + '.').length);
+                    const paren = afterDot.indexOf('(');
+                    const methodName = paren >= 0 ? afterDot.substring(0, paren) : afterDot;
+                    const paramsText = paren >= 0 ? afterDot.substring(paren) : '';
 
-                    if (type[0].toUpperCase() === 'U') {
-                        if (ddname === ddname.toUpperCase()) {
-                            item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toUpperCase();
-                        } else {
-                            item.label = `${params[1]}%${params[2] ? params[2] : ''}`.toLowerCase();
-                        }
-                    } else {
-                        if (ddname === ddname.toUpperCase()) {
-                            item.label = `${name.toUpperCase()}`;
-                        } else {
-                            item.label = `${name.toLowerCase()}`;
-                        }
-                    }
-                    
-                    item.detail = `${description} ${type}`; // Type displayed in the detail property
+                    const item = new vscode.CompletionItem(methodName, vscode.CompletionItemKind.Method);
+                    // Show signature to the right; keeps search by method name
+                    (item as any).label = { label: methodName, description: paramsText };
+                    item.detail = sig;
+
+                    // Insert just the method call (dot already typed)
+                    const argSnippet = buildArgSnippetFromSignature(sig);
+                    const snippet = new vscode.SnippetString();
+                    snippet.appendText(methodName);
+                    snippet.appendText('(');
+                    snippet.appendSnippet(argSnippet);
+                    snippet.appendText(')');
+                    item.insertText = snippet;
+
                     return item;
                 });
             }
@@ -693,7 +765,7 @@ export function activate(context: vscode.ExtensionContext) {
         '.'
     );
 
-    const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvider(
+const bbjTemplatedStringProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
         {
             provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
