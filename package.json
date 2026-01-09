@@ -4,15 +4,11 @@
   "publisher": "excellware",
   "author": { "name": "Excellware, Inc." },
   "description": "",
-<<<<<<< ours
-  "version": "0.0.2",
-=======
   "version": "0.0.3",
   "publisher": "excellware",
   "author": {
     "name": "Excellware, Inc."
   },
->>>>>>> theirs
   "icon": "images/ToolsIcon.gif",
   "engines": {
     "vscode": "^1.90.0"
@@ -65,7 +61,7 @@
           "group": "navigation"
         }
       ]
-    ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

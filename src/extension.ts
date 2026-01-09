@@ -38,12 +38,22 @@ function getProgramArgs(companyList: any, pgm: any) {
 }
 
 function getClasses(companyList: any) {
-    let classes: any = [];
+    // Company libraries can overlap; avoid showing duplicate class names (e.g. after typing `new `).
+    // Preserve the configured company search order by keeping the first occurrence.
+    const seen = new Set<string>();
+    const classes: any[] = [];
+
     for (const elem of companyList) {
-        classes = classes.concat(elem.company.classes);
-        // return elem.company.classes.map((e: any) => e.classname);
+        const list = elem?.company?.classes || [];
+        for (const c of list) {
+            const name = c?.classname;
+            if (!name) continue;
+            if (seen.has(name)) continue;
+            seen.add(name);
+            classes.push(c);
+        }
     }
-    
+
     return classes;
 }
 
