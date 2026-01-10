@@ -922,58 +922,52 @@ export function activate(context: vscode.ExtensionContext) {
         '.'
     );
 
-    const classProvider = vscode.languages.registerCompletionItemProvider(
+    const constructorProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
         {
-            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
-                // Check if the user has typed "new "
+            provideCompletionItems(document, position) {
                 const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                console.log('NEW PROVIDER FIRED:', linePrefix);
+
                 if (!linePrefix.endsWith('new ')) {
                     return undefined;
                 }
 
-                const classes = getClasses(companyList);
-
-                if (!classes) {
+                if (!companyList || companyList.length === 0) {
                     return undefined;
                 }
 
-                // Return specific suggestions for "new "
-                return classes.map((elem: any) => {
-                    const item = new vscode.CompletionItem(elem.classname, vscode.CompletionItemKind.Field);
-                    return item;
-                });
-            }
-        },
-        ' '
-    );
+                const items: vscode.CompletionItem[] = [];
 
-    const constructorProvider = vscode.languages.registerCompletionItemProvider(
-        ['plaintext', 'bbj'],
-        {
-            provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
-                // Check if the user has typed "new "
-                const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                const lastWordMatch = linePrefix.match(/new (\w+)\s$/);
-                if (!lastWordMatch) {
-                    return undefined;
+                for (const company of companyList) {
+                    const classes = company?.classes;
+                    if (!Array.isArray(classes)) continue;
+
+                    for (const cls of classes) {
+                        const className = cls.classname;
+                        const ctors = cls.constructors;
+
+                        if (!className || !Array.isArray(ctors) || ctors.length === 0) {
+                            continue;
+                        }
+
+                        for (const ctor of ctors) {
+                            const label = `${className} ${ctor}`;
+                            const item = new vscode.CompletionItem(
+                                label,
+                                vscode.CompletionItemKind.Class
+                            );
+
+                            item.insertText = `${className}${ctor}`;
+                            item.filterText = label;
+                            item.detail = 'Constructor';
+
+                            items.push(item);
+                        }
+                    }
                 }
 
-                const constructors = getConstructors(companyList, lastWordMatch[1]);
-
-                return constructors.map((elem: any) => {
-                    const item = new vscode.CompletionItem(elem, vscode.CompletionItemKind.Field);
-                    // Replace the trailing space with the selected item
-                    const range = new vscode.Range(
-                        new vscode.Position(position.line, linePrefix.length - 1),
-                        new vscode.Position(position.line, linePrefix.length - 1)
-                    );
-                    item.range = range;
-                    return item;
-
-                    // const item = new vscode.CompletionItem(elem, vscode.CompletionItemKind.Field);
-                    // return item;
-                });
+                return items;
             }
         },
         ' '
@@ -990,7 +984,6 @@ export function activate(context: vscode.ExtensionContext) {
         callableSignatureProvider,
         dataProvider,
         bbjTemplatedStringProvider,
-        classProvider,
         constructorProvider
     );
 }
