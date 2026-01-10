@@ -927,14 +927,17 @@ export function activate(context: vscode.ExtensionContext) {
         {
             provideCompletionItems(document, position) {
                 const linePrefix = document.lineAt(position).text.substring(0, position.character);
-                console.log('NEW PROVIDER FIRED:', linePrefix);
 
-                if (!linePrefix.endsWith('new ')) {
+                console.log('NEW CONSTRUCTOR PROVIDER FIRED:', linePrefix);
+
+                // Only respond to: new, new <space>, new <partialClass>
+                if (!/\bnew(\s+\w*)?$/.test(linePrefix)) {
                     return undefined;
                 }
 
+                // Libraries not ready yet → allow retry
                 if (!companyList || companyList.length === 0) {
-                    return undefined;
+                    return [];
                 }
 
                 const items: vscode.CompletionItem[] = [];
@@ -946,10 +949,7 @@ export function activate(context: vscode.ExtensionContext) {
                     for (const cls of classes) {
                         const className = cls.classname;
                         const ctors = cls.constructors;
-
-                        if (!className || !Array.isArray(ctors) || ctors.length === 0) {
-                            continue;
-                        }
+                        if (!className || !Array.isArray(ctors)) continue;
 
                         for (const ctor of ctors) {
                             const label = `${className} ${ctor}`;
@@ -970,9 +970,8 @@ export function activate(context: vscode.ExtensionContext) {
                 return items;
             }
         },
-        ' '
+        'n'   // 🔑 REQUIRED
     );
-
     context.subscriptions.push(
         disposable,
         disposableOpen,
