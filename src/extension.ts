@@ -106,18 +106,19 @@ function getProgramArgs(companyList: any, pgm: any) {
     }
 }
 
-function getClasses(companyList: any) {
-    // Company libraries can overlap; avoid showing duplicate class names (e.g. after typing `new `).
-    // Preserve the configured company search order by keeping the first occurrence.
+function getClasses(companyList: any[]) {
     const seen = new Set<string>();
     const classes: any[] = [];
 
     for (const elem of companyList) {
-        const list = elem?.company?.classes || [];
+        const list = elem?.data?.classes;
+        if (!Array.isArray(list)) continue;
+
         for (const c of list) {
             const name = c?.classname;
             if (!name) continue;
             if (seen.has(name)) continue;
+
             seen.add(name);
             classes.push(c);
         }
@@ -126,16 +127,34 @@ function getClasses(companyList: any) {
     return classes;
 }
 
-function getConstructors(companyList: any, classname: any) {
+
+function getConstructors(companyList: any[]) {
+    const results: { classname: string; constructor: string }[] = [];
+    const seen = new Set<string>();
+
     for (const elem of companyList) {
-        for (const e of elem.company.classes) {
-            if (e.classname == classname) {
-                return e.constructors;
+        const classes = elem?.company?.classes;
+        if (!Array.isArray(classes)) continue;
+
+        for (const cls of classes) {
+            if (!cls.classname || !Array.isArray(cls.constructors)) continue;
+
+            for (const ctor of cls.constructors) {
+                const key = `${cls.classname}${ctor}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+
+                results.push({
+                    classname: cls.classname,
+                    constructor: ctor
+                });
             }
         }
     }
-    return [];
+
+    return results;
 }
+
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -398,48 +417,6 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
-
-    // const provider1 = vscode.languages.registerCompletionItemProvider('plaintext', {
-
-    //     provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext) {
-
-    //         // a simple completion item which inserts `Hello World!`
-    //         const simpleCompletion = new vscode.CompletionItem('Hello World!');
-
-    //         // a completion item that inserts its text as snippet,
-    //         // the `insertText`-property is a `SnippetString` which will be
-    //         // honored by the editor.
-    //         const snippetCompletion = new vscode.CompletionItem('Good part of the day');
-    //         snippetCompletion.insertText = new vscode.SnippetString('Good ${1|morning,afternoon,evening|}. It is ${1}, right?');
-    //         const docs: any = new vscode.MarkdownString("Inserts a snippet that lets you select [link](x.ts).");
-    //         snippetCompletion.documentation = docs;
-    //         docs.baseUri = vscode.Uri.parse('http://example.com/a/b/c/');
-
-    // a completion item that can be accepted by a commit character,
-    // the `commitCharacters`-property is set which means that the completion will
-    // be inserted and then the character will be typed.
-    // const commitCharacterCompletion = new vscode.CompletionItem('console');
-    // commitCharacterCompletion.commitCharacters = ['.'];
-    // commitCharacterCompletion.documentation = new vscode.MarkdownString('Press `.` to get `console.`');
-
-    //         // a completion item that retriggers IntelliSense when being accepted,
-    //         // the `command`-property is set which the editor will execute after 
-    //         // completion has been inserted. Also, the `insertText` is set so that 
-    //         // a space is inserted after `new`
-    //         const commandCompletion = new vscode.CompletionItem('new');
-    //         commandCompletion.kind = vscode.CompletionItemKind.Keyword;
-    //         commandCompletion.insertText = 'new ';
-    //         commandCompletion.command = { command: 'editor.action.triggerSuggest', title: 'Re-trigger completions...' };
-
-    //         // return all completion items as array
-    //         return [
-    //             simpleCompletion,
-    //             snippetCompletion,
-    //             commitCharacterCompletion,
-    //             commandCompletion
-    //         ];
-    //     }
-    // });
 
     const labelProvider = vscode.languages.registerCompletionItemProvider(
         ['plaintext', 'bbj'],
@@ -923,55 +900,62 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     const constructorProvider = vscode.languages.registerCompletionItemProvider(
-        ['plaintext', 'bbj'],
+        ['bbj'],
         {
             provideCompletionItems(document, position) {
                 const linePrefix = document.lineAt(position).text.substring(0, position.character);
 
-                console.log('NEW CONSTRUCTOR PROVIDER FIRED:', linePrefix);
-
-                // Only respond to: new, new <space>, new <partialClass>
-                if (!/\bnew(\s+\w*)?$/.test(linePrefix)) {
-                    return undefined;
+                // If the line does NOT contain "new", this provider is not applicable
+                if (!/\bnew\b/i.test(linePrefix)) {
+                    return new vscode.CompletionList([], false);
                 }
 
-                // Libraries not ready yet → allow retry
+                // Only offer completions at: new <optional partial>
+                if (!/\bnew\s*\w*$/i.test(linePrefix)) {
+                    return new vscode.CompletionList([], false);
+                }
+
                 if (!companyList || companyList.length === 0) {
-                    return [];
+                    return new vscode.CompletionList([], false);
+                }
+
+                const constructors = getConstructors(companyList);
+
+                if (!constructors || constructors.length === 0) {
+                    return new vscode.CompletionList([], false);
                 }
 
                 const items: vscode.CompletionItem[] = [];
 
-                for (const company of companyList) {
-                    const classes = company?.classes;
-                    if (!Array.isArray(classes)) continue;
+                for (const entry of constructors) {
+                    const className = entry.classname;
+                    const ctor = entry.constructor;
 
-                    for (const cls of classes) {
-                        const className = cls.classname;
-                        const ctors = cls.constructors;
-                        if (!className || !Array.isArray(ctors)) continue;
+                    const label = `${className} ${ctor}`;
 
-                        for (const ctor of ctors) {
-                            const label = `${className} ${ctor}`;
-                            const item = new vscode.CompletionItem(
-                                label,
-                                vscode.CompletionItemKind.Class
-                            );
+                    const item = new vscode.CompletionItem(
+                        label,
+                        vscode.CompletionItemKind.Class
+                    );
 
-                            item.insertText = `${className}${ctor}`;
-                            item.filterText = label;
-                            item.detail = 'Constructor';
+                    item.insertText = `${className}${ctor}`;
+                    item.sortText = `0_${label}`;
+                    item.filterText = label;
+                    item.preselect = true;
+                    item.detail = `${className}${ctor}`;
 
-                            items.push(item);
-                        }
-                    }
+                    items.push(item);
                 }
 
-                return items;
+                return new vscode.CompletionList(items, false);
+
+
             }
         },
-        'n'   // 🔑 REQUIRED
+        ' ', 'D'   // allow popup after space OR typing class name
     );
+
+
     context.subscriptions.push(
         disposable,
         disposableOpen,
